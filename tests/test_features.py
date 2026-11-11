@@ -260,7 +260,7 @@ class ExportStructureTests(unittest.TestCase):
     def test_docx_structure(self):
         import docx
         out = os.path.join(self.tmp, "o.docx")
-        self.export.export(self.doc, "docx", [0, 1], out)
+        self.export.export(self.doc, "docx", [0, 1], out, keep_layout=False)
         d = docx.Document(out)
         self.assertEqual(d.paragraphs[0].style.name, "Heading 1")
         self.assertEqual(len(d.tables), 1); self.assertEqual([c.text for c in d.tables[0].rows[1].cells], ["r1c0", "r1c1", "r1c2"])
@@ -272,7 +272,7 @@ class ExportStructureTests(unittest.TestCase):
         import odf.opendocument as od
         from odf import table, text, draw
         out = os.path.join(self.tmp, "o.odt")
-        self.export.export(self.doc, "odt", [0, 1], out)
+        self.export.export(self.doc, "odt", [0, 1], out, keep_layout=False)
         d = od.load(out)
         self.assertEqual(len(d.getElementsByType(text.H)), 1)
         self.assertEqual(len(d.getElementsByType(table.TableRow)), 3)

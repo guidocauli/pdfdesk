@@ -590,6 +590,9 @@ class DocView(QGraphicsView):
                 self._make_ghost()
                 return
         local = self._local(pno, sp, clamp=False)
+        if self.doc.annot_at(pno, (local.x(), local.y())) is not None:      # firme-immagine, timbri, forme: oggetti come gli altri
+            self._press_select(sp, pno)
+            return
         obj = self.doc.content_at(pno, (local.x(), local.y()))
         if obj is None:
             self.clear_selection()

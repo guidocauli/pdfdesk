@@ -573,3 +573,55 @@ class HighlightToggleTests(unittest.TestCase):
         d.add_markup(0, "hl", b + (-1, -1, 1, 1), (1, 0, 0))             # la riprende con un altro colore
         cols = sorted(c[0] for c in self._hl(d))
         self.assertEqual(cols, [[1.0, 0.0, 0.0], [1.0, 1.0, 0.0]])
+
+
+class SignatureTransparencyTests(unittest.TestCase):
+    def test_import_keeps_existing_transparency(self):
+        from PySide6.QtGui import QImage, QPainter, QPen, QColor
+        from PySide6.QtCore import Qt
+        from pdfdesk import sigstore
+        img = QImage(300, 100, QImage.Format_ARGB32); img.fill(Qt.transparent)
+        p = QPainter(img); p.setPen(QPen(QColor(10, 20, 120), 4)); p.drawLine(10, 80, 150, 20); p.end()
+        self.assertTrue(sigstore.has_transparency(img))
+        out = sigstore.remove_background(img)
+        self.assertEqual(out.pixel(1, 1) >> 24, 0)                    # lo sfondo resta trasparente (non nero opaco)
+        opaque = QImage(50, 50, QImage.Format_RGB32); opaque.fill(Qt.white)
+        self.assertFalse(sigstore.has_transparency(opaque))
+
+
+class ExportLayoutTests(unittest.TestCase):
+    def _pdf(self):
+        d = fitz.open(); p = d.new_page()
+        p.insert_text((72, 80), "Titolo", fontsize=22)
+        p.insert_text((300, 400), "Colonna destra", fontsize=11)
+        p.draw_rect(fitz.Rect(72, 300, 540, 360), color=(0, 0, 0.6), fill=(0.9, 0.9, 1))
+        d.new_page().insert_text((72, 100), "Seconda", fontsize=14)
+        path = os.path.join(TMP, "lay.pdf"); d.save(path)
+        return fitz.open(path)
+
+    def test_docx_odt_keep_positions_and_text(self):
+        import zipfile
+        from pdfdesk import export
+        d = self._pdf()
+        for fmt, part in (("docx", "word/document.xml"), ("odt", "content.xml")):
+            out = os.path.join(TMP, "lay." + fmt)
+            export.export(d, fmt, [0, 1], out)
+            xml = zipfile.ZipFile(out).read(part).decode()
+            self.assertIn("Titolo", xml); self.assertIn("Colonna destra", xml); self.assertIn("Seconda", xml)
+        import docx, odf.opendocument as od
+        docx.Document(os.path.join(TMP, "lay.docx")); od.load(os.path.join(TMP, "lay.odt"))     # file validi
+        # posizione del riquadro "Colonna destra": x=300pt → 3810000 EMU nel DOCX, 300pt nell'ODT
+        self.assertIn("<wp:posOffset>3810000</wp:posOffset>", zipfile.ZipFile(os.path.join(TMP, "lay.docx")).read("word/document.xml").decode())
+        self.assertIn('svg:x="300.00pt"', zipfile.ZipFile(os.path.join(TMP, "lay.odt")).read("content.xml").decode())
+
+    def test_text_keeps_columns_and_flow_mode_still_available(self):
+        from pdfdesk import export
+        d = self._pdf()
+        out = os.path.join(TMP, "lay.txt")
+        export.export(d, "txt", [0], out)
+        lines = open(out, encoding="utf-8").read().split("\n")
+        col = [l for l in lines if "Colonna destra" in l][0]
+        self.assertGreater(col.index("Colonna destra"), 10)             # rientro mantenuto
+        export.export(d, "txt", [0], out, keep_layout=False)
+        self.assertIn("Colonna destra", open(out, encoding="utf-8").read())
+        export.export(d, "docx", [0], os.path.join(TMP, "flow.docx"), keep_layout=False)

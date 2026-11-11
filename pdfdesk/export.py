@@ -108,12 +108,13 @@ def export_images(doc: fitz.Document, pages: list[int], fmt: str, target: str, d
 
 
 # ====================================================================== testo semplice
-def export_text(doc: fitz.Document, pages: list[int], target: str, progress: Progress = None) -> str:
+def export_text(doc: fitz.Document, pages: list[int], target: str, progress: Progress = None, keep_layout: bool = True) -> str:
+    from .export_fixed import layout_text
     parts = []
     n = len(pages)
     for k, p in enumerate(pages):
         _tick(progress, k, n)
-        parts.append(doc[p].get_text("text", sort=True).rstrip())
+        parts.append(layout_text(doc[p]).rstrip("\n") if keep_layout else doc[p].get_text("text", sort=True).rstrip())
     text = "\n\n\f".join(parts) + "\n"
     with open(target, "w", encoding="utf-8", newline="\n") as f:
         f.write(text)
@@ -310,7 +311,10 @@ def _docx_run(r: Run) -> str:
     return f'<w:r><w:rPr>{props}</w:rPr><w:t xml:space="preserve">{escape(r.text)}</w:t></w:r>'
 
 
-def export_docx(doc: fitz.Document, pages: list[int], target: str, progress: Progress = None) -> str:
+def export_docx(doc: fitz.Document, pages: list[int], target: str, progress: Progress = None, keep_layout: bool = True) -> str:
+    if keep_layout:
+        from .export_fixed import export_docx_fixed
+        return export_docx_fixed(doc, pages, target, progress)
     lay = extract_layout(doc, pages, progress)
     avail = lay.width - lay.margins[0] - lay.margins[2]
     body: list[str] = []
@@ -402,7 +406,10 @@ def export_docx(doc: fitz.Document, pages: list[int], target: str, progress: Pro
 
 
 # ====================================================================== ODT
-def export_odt(doc: fitz.Document, pages: list[int], target: str, progress: Progress = None) -> str:
+def export_odt(doc: fitz.Document, pages: list[int], target: str, progress: Progress = None, keep_layout: bool = True) -> str:
+    if keep_layout:
+        from .export_fixed import export_odt_fixed
+        return export_odt_fixed(doc, pages, target, progress)
     lay = extract_layout(doc, pages, progress)
     avail = lay.width - lay.margins[0] - lay.margins[2]
     tstyles: dict[tuple, str] = {}           # stili di carattere
@@ -533,9 +540,9 @@ def export(doc: fitz.Document, fmt: str, pages: list[int], target: str, **opt) -
                              tiff_multipage=opt.get("tiff_multipage", True), tiff_compression=opt.get("tiff_compression", "tiff_lzw"),
                              progress=progress)
     if fmt == "txt":
-        return [export_text(doc, pages, target, progress)]
+        return [export_text(doc, pages, target, progress, opt.get("keep_layout", True))]
     if fmt == "docx":
-        return [export_docx(doc, pages, target, progress)]
+        return [export_docx(doc, pages, target, progress, opt.get("keep_layout", True))]
     if fmt == "odt":
-        return [export_odt(doc, pages, target, progress)]
+        return [export_odt(doc, pages, target, progress, opt.get("keep_layout", True))]
     raise ValueError(f"Formato non supportato: {fmt}")

@@ -472,6 +472,22 @@ class ModalPlacementTests(unittest.TestCase):
             box.close(); w.close(); wait(30)
 
 
+class EditObjSelectsAnnotImageTests(unittest.TestCase):
+    def test_editobj_click_selects_inserted_image(self):
+        from pdfdesk import sigstore
+        from PySide6.QtGui import QImage
+        QSettings().clear()
+        w = MainWindow(); w.resize(1200, 800); w.show(); self.assertTrue(w.open_path(SRC)); wait(200)
+        img = QImage(120, 40, QImage.Format_ARGB32); img.fill(Qt.transparent)
+        x = w.pdf.add_image(0, fitz.Rect(100, 300, 220, 340), sigstore.png_bytes(img)); w.changed([0]); wait(100)
+        w.set_tool("editobj"); wait(30)
+        v = w.view; r = v.page_rects[0]
+        QTest.mouseClick(v.viewport(), Qt.LeftButton, Qt.NoModifier, v.mapFromScene(QPointF(r.x() + 160, r.y() + 320))); wait(80)
+        self.assertEqual(v.sel_xref, x)
+        self.assertIsNotNone(w.selected_image())
+        w.pdf.modified = False; w.close(); wait(30)
+
+
 class UndoRedrawTests(unittest.TestCase):
     def test_undo_reports_only_changed_pages(self):
         from pdfdesk.core import PdfDocument
@@ -595,7 +611,9 @@ class TabsGatingExportTests(unittest.TestCase):
             self.assertTrue(w.export_to(dict(base, fmt=fmt), os.path.join(d, fmt)))
             self.assertEqual(len(os.listdir(os.path.join(d, fmt))), n)
         import docx
-        doc = docx.Document(os.path.join(d, "o.docx")); self.assertTrue(any(p.text.strip() for p in doc.paragraphs))
+        import zipfile
+        docx.Document(os.path.join(d, "o.docx"))                                   # si apre: struttura valida
+        self.assertIn("<w:t", zipfile.ZipFile(os.path.join(d, "o.docx")).read("word/document.xml").decode())
         txt = open(os.path.join(d, "o.txt"), encoding="utf-8").read()
         self.assertEqual(txt.strip().split()[:3], w.pdf.doc[0].get_text("text", sort=True).split()[:3])
 

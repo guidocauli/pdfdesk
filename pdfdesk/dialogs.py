@@ -599,8 +599,10 @@ class SignatureLibraryDialog(QDialog):
         if img.isNull():
             QMessageBox.warning(self, tr("Firma"), tr("Impossibile leggere l'immagine."))
             return
-        if QMessageBox.question(self, tr("Sfondo"), tr("Rendere trasparente lo sfondo chiaro (consigliato per firme su carta bianca)?"),
-                                QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
+        if sigstore.has_transparency(img):
+            img = sigstore.remove_background(img)           # già trasparente: si ritaglia soltanto
+        elif QMessageBox.question(self, tr("Sfondo"), tr("Rendere trasparente lo sfondo chiaro (consigliato per firme su carta bianca)?"),
+                                  QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
             img = sigstore.remove_background(img)
         else:
             img = sigstore.limit_size(img)
@@ -1403,6 +1405,10 @@ class ExportDialog(QDialog):
         f.addRow(tr("Qualità JPG"), self.quality)
         f.addRow(tr("Compressione TIFF"), self.comp)
         f.addRow("", self.multi)
+        self.keep = QCheckBox(tr("Mantieni l'impaginazione originale")); self.keep.setChecked(True)
+        self.keep.setToolTip(tr("Testo, immagini e filetti restano nella stessa posizione del PDF (riquadri di testo). "
+                                "Disattivando si ottiene un testo scorrevole, più comodo da riscrivere ma con impaginazione diversa."))
+        f.addRow("", self.keep)
         self.note = QLabel(); self.note.setWordWrap(True)
         lay.addLayout(f)
         lay.addWidget(self.note)
@@ -1413,22 +1419,26 @@ class ExportDialog(QDialog):
         self._form = f
         self.fmt.currentIndexChanged.connect(self._sync)
         self.pages.currentIndexChanged.connect(self._sync)
+        self.keep.toggled.connect(self._sync)
         self._sync()
 
     def _sync(self) -> None:
         k = self.fmt.currentData()
         img = k in ("png", "jpg", "tiff")
-        for w, show in ((self.dpi, img), (self.quality, k == "jpg"), (self.comp, k == "tiff"), (self.multi, k == "tiff")):
+        for w, show in ((self.dpi, img), (self.quality, k == "jpg"), (self.comp, k == "tiff"), (self.multi, k == "tiff"), (self.keep, k in ("txt", "docx", "odt"))):
             w.setVisible(show); lab = self._form.labelForField(w)
             if lab:
                 lab.setVisible(show)
         self.range.setEnabled(self.pages.currentIndex() == 2)
         self._form.labelForField(self.range).setEnabled(self.range.isEnabled())
-        self.note.setText({"docx": tr("La struttura (titoli, paragrafi, tabelle, immagini, interruzioni di pagina) viene ricostruita dal contenuto del PDF; "
-                                   "l'impaginazione esatta può differire."),
-                           "odt": tr("La struttura (titoli, paragrafi, tabelle, immagini, interruzioni di pagina) viene ricostruita dal contenuto del PDF; "
-                                  "l'impaginazione esatta può differire."),
-                           "txt": tr("Solo il testo, in ordine di lettura. I PDF scansionati senza testo producono un file vuoto.")}.get(k, ""))
+        keep = self.keep.isChecked()
+        flow = tr("La struttura (titoli, paragrafi, tabelle, immagini, interruzioni di pagina) viene ricostruita dal contenuto del PDF; "
+                  "l'impaginazione esatta può differire.")
+        fixed = tr("Ogni blocco di testo diventa un riquadro nella stessa posizione e con gli stessi font del PDF; immagini, filetti e "
+                   "rettangoli sono riposizionati come nell'originale.")
+        self.note.setText({"docx": fixed if keep else flow, "odt": fixed if keep else flow,
+                           "txt": tr("Il testo mantiene colonne, rientri e spaziature della pagina. I PDF scansionati senza testo producono un file vuoto.") if keep
+                           else tr("Solo il testo, in ordine di lettura. I PDF scansionati senza testo producono un file vuoto.")}.get(k, ""))
         self.adjustSize()
 
     def _ok(self) -> None:
@@ -1450,7 +1460,7 @@ class ExportDialog(QDialog):
 
     def options(self) -> dict:
         return {"fmt": self.fmt.currentData(), "pages": self.page_list(), "dpi": self.dpi.value(), "quality": self.quality.value(),
-                "tiff_multipage": self.multi.isChecked(), "tiff_compression": self.comp.currentData()}
+                "tiff_multipage": self.multi.isChecked(), "tiff_compression": self.comp.currentData(), "keep_layout": self.keep.isChecked()}
 
 
 class MetadataDialog(QDialog):

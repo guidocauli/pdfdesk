@@ -61,8 +61,25 @@ def crop_to_content(img: QImage, margin: int = 6) -> QImage:
     return img.copy(x0, y0, x1 - x0 + 1, y1 - y0 + 1)
 
 
+def has_transparency(img: QImage) -> bool:
+    """True se l'immagine ha già pixel (semi)trasparenti: lo sfondo è già a posto e non va toccato."""
+    if not img.hasAlphaChannel():
+        return False
+    img = img.convertToFormat(QImage.Format_ARGB32)
+    data = bytes(img.constBits())
+    stride = img.bytesPerLine()
+    w = img.width()
+    for y in range(img.height()):
+        if min(data[y * stride + 3: y * stride + w * 4: 4]) < 255:
+            return True
+    return False
+
+
 def remove_background(img: QImage, level: int = 200, max_width: int = 900) -> QImage:
-    """Rende trasparente lo sfondo chiaro (foto/scansione di una firma su carta bianca)."""
+    """Rende trasparente lo sfondo chiaro (foto/scansione di una firma su carta bianca).
+    Un'immagine che ha già la trasparenza resta com'è (i pixel trasparenti sono spesso neri e verrebbero scambiati per inchiostro)."""
+    if has_transparency(img):
+        return crop_to_content(limit_size(img, max(max_width, 2400)))
     if img.width() > max_width:
         img = img.scaledToWidth(max_width, Qt.SmoothTransformation)
     img = img.convertToFormat(QImage.Format_ARGB32)
