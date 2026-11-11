@@ -101,6 +101,7 @@ class DocView(QGraphicsView):
     rectDrawn = Signal(str, int, QRectF)               # strumento, pagina, rettangolo (punti pagina)
     strokeDrawn = Signal(str, int, list)               # strumento, pagina, [(x, y)]
     lineDrawn = Signal(str, int, QPointF, QPointF)
+    multiMoveRequested = Signal(int, float, float)      # pagina, spostamento dx, dy (punti) dell'intera selezione multipla
     textFlowDrawn = Signal(str, int, QPointF, QPointF)  # strumento testo, pagina, punto iniziale e finale (selezione a righe)
     pointClicked = Signal(str, int, QPointF)
     selectionChanged = Signal(int, int)                # pagina, xref (-1 = nessuna)
@@ -143,6 +144,8 @@ class DocView(QGraphicsView):
         self._ghost: Optional[QGraphicsPixmapItem] = None
         self._drag = None
         self._preview: Optional[QGraphicsItem] = None
+        self.multi: list = []                      # selezione multipla: voci {"kind": "annot"|"content", ...}
+        self._multi_boxes: list = []
         self.text_flow = True                     # selezione del testo a righe (Alt la inverte: ad area)
         self._pan_last: Optional[QPointF] = None
         self._found: list[QGraphicsRectItem] = []
@@ -432,13 +435,134 @@ class DocView(QGraphicsView):
 
     # ------------------------------------------------------------------ selezione
     def select(self, pno: int, xref: int) -> None:
+        self._clear_multi_boxes(); self.multi = []
+        grp = self.doc.annot_group(pno, xref) if self.doc and xref >= 0 else [xref]
+        if len(grp) > 1:                                  # un gruppo si seleziona e si sposta tutto insieme
+            items = []
+            for x in grp:
+                inf = self.doc.annot_info(pno, x)
+                if inf is not None:
+                    items.append({"kind": "annot", "xref": x, "rect": fitz.Rect(inf.rect)})
+            if len(items) > 1:
+                self.set_multi(pno, items)
+                return
         self.sel_page, self.sel_xref = pno, xref
         self._reload_selection_rect()
         self.selectionChanged.emit(pno, xref)
 
+    # ------------------------------------------------------------------ selezione multipla
+    def _clear_multi_boxes(self) -> None:
+        for b in self._multi_boxes:
+            if b.scene() is not None:
+                self.scene_.removeItem(b)
+        self._multi_boxes = []
+
+    def _item_key(self, it: dict):
+        if it["kind"] == "annot":
+            return ("a", it["xref"])
+        o = it["obj"]
+        return ("c", o["kind"], tuple(round(v) for v in fitz.Rect(o.get("page_rect") or o["rect"])))
+
+    def _union(self, items: list) -> fitz.Rect:
+        u = fitz.Rect(items[0]["rect"])
+        for it in items[1:]:
+            u |= fitz.Rect(it["rect"])
+        return u
+
+    def set_multi(self, pno: int, items: list) -> None:
+        """Selezione di più oggetti sulla stessa pagina: riquadro tratteggiato su ognuno e riquadro complessivo per spostarli insieme."""
+        self._clear_multi_boxes()
+        self._remove_ghost()
+        if not items:
+            self.clear_selection()
+            return
+        self.multi = list(items)
+        self.sel_page, self.sel_xref, self.sel_info, self.sel_content = pno, -3, None, None
+        o = self.page_rects[pno].topLeft()
+        for it in items:
+            r = it["rect"]
+            b = QGraphicsRectItem(QRectF(o.x() + r.x0, o.y() + r.y0, r.width, r.height))
+            pen = QPen(QColor(30, 120, 230), 1, Qt.DashLine); pen.setCosmetic(True)
+            b.setPen(pen); b.setZValue(45)
+            self.scene_.addItem(b)
+            self._multi_boxes.append(b)
+        u = self._union(items)
+        self._sel.set_rect(QRectF(o.x() + u.x0, o.y() + u.y0, u.width, u.height))
+        self._sel.show_handles = False
+        self._sel.show()
+        self.selectionChanged.emit(pno, -3)
+
+    def _hit_item(self, pno: int, sp: QPointF, content: bool):
+        loc = self._local(pno, sp, clamp=False)
+        x = self.doc.annot_at(pno, (loc.x(), loc.y()))
+        if x is not None:
+            inf = self.doc.annot_info(pno, x)
+            if inf is not None:
+                return {"kind": "annot", "xref": x, "rect": fitz.Rect(inf.rect)}
+        if content:
+            o = self.doc.content_at(pno, (loc.x(), loc.y()))
+            if o is not None:
+                return {"kind": "content", "obj": o, "rect": fitz.Rect(o["rect"])}
+        return None
+
+    def _current_items(self, pno: int) -> list:
+        if self.sel_page != pno:
+            return []
+        if self.multi:
+            return list(self.multi)
+        if self.sel_info is not None:
+            return [{"kind": "annot", "xref": self.sel_xref, "rect": fitz.Rect(self.sel_info.rect)}]
+        if self.sel_content is not None:
+            return [{"kind": "content", "obj": self.sel_content, "rect": fitz.Rect(self.sel_content["rect"])}]
+        return []
+
+    def _apply_items(self, pno: int, items: list) -> None:
+        if not items:
+            self.clear_selection()
+        elif len(items) == 1:
+            it = items[0]
+            self.clear_selection()
+            if it["kind"] == "annot":
+                self.select(pno, it["xref"])
+            else:
+                self.select_content(pno, it["obj"])
+        else:
+            self.set_multi(pno, items)
+
+    def _ctrl_click(self, sp: QPointF, pno: int) -> None:
+        content = self.tool == "editobj"
+        it = self._hit_item(pno, sp, content)
+        if it is None:
+            return
+        cur = self._current_items(pno)
+        # un elemento di un gruppo porta con sé tutto il gruppo
+        new = [it]
+        if it["kind"] == "annot":
+            grp = self.doc.annot_group(pno, it["xref"])
+            if len(grp) > 1:
+                new = [{"kind": "annot", "xref": x, "rect": fitz.Rect(self.doc.annot_info(pno, x).rect)}
+                       for x in grp if self.doc.annot_info(pno, x) is not None]
+        keys = {self._item_key(c) for c in cur}
+        if all(self._item_key(n) in keys for n in new):
+            nk = {self._item_key(n) for n in new}
+            cur = [c for c in cur if self._item_key(c) not in nk]
+        else:
+            cur += [n for n in new if self._item_key(n) not in keys]
+        self._apply_items(pno, cur)
+
+    def _start_band(self, sp: QPointF, pno: int, add: bool) -> None:
+        item = QGraphicsRectItem()
+        pen = QPen(QColor(30, 120, 230), 1, Qt.DashLine); pen.setCosmetic(True)
+        item.setPen(pen); item.setBrush(QBrush(QColor(30, 120, 230, 40))); item.setZValue(60)
+        self.scene_.addItem(item)
+        self._preview = item
+        self._drag = {"kind": "band", "page": pno, "a": sp, "b": sp, "add": add}
+
     def clear_selection(self) -> None:
         had = self.sel_page >= 0
         self.sel_page, self.sel_xref, self.sel_info, self.sel_content = -1, -1, None, None
+        self._clear_multi_boxes()
+        self.multi = []
         self._sel.hide()
         self._remove_ghost()
         if had:
@@ -469,6 +593,7 @@ class DocView(QGraphicsView):
         obj = self.doc.content_at(pno, (local.x(), local.y()))
         if obj is None:
             self.clear_selection()
+            self._start_band(sp, pno, False)
             return
         self.clear_selection()
         self.select_content(pno, obj)
@@ -476,6 +601,21 @@ class DocView(QGraphicsView):
         self._make_ghost()
 
     def _reload_selection_rect(self) -> None:
+        if self.multi:
+            if any(i["kind"] == "content" for i in self.multi) or not self.doc or self.sel_page < 0:
+                self.clear_selection()
+                return
+            items = []
+            for i in self.multi:
+                inf = self.doc.annot_info(self.sel_page, i["xref"])
+                if inf is not None:
+                    items.append({"kind": "annot", "xref": i["xref"], "rect": fitz.Rect(inf.rect)})
+            if len(items) > 1:
+                pno = self.sel_page
+                self.set_multi(pno, items)
+            else:
+                self.clear_selection()
+            return
         if self.sel_content is not None:          # dopo ogni modifica gli oggetti del contenuto vanno ricercati
             self.clear_selection()
             return
@@ -561,6 +701,15 @@ class DocView(QGraphicsView):
         if pno < 0:
             return
         t = self.tool
+        if t in ("select", "editobj"):
+            ctrl = bool(e.modifiers() & Qt.ControlModifier)
+            if ctrl:
+                self._ctrl_click(sp, pno)
+                return
+            if self.multi and self._sel.isVisible() and self.sel_page == pno and self._sel.rect.contains(sp):
+                self._drag = {"kind": "mmove", "start": sp, "orig": QRectF(self._sel.rect), "page": pno, "moved": False,
+                              "boxes": [QRectF(b.rect()) for b in self._multi_boxes]}
+                return
         if t == "select":
             self._press_select(sp, pno)
         elif t == "editobj":
@@ -627,8 +776,13 @@ class DocView(QGraphicsView):
         xref = self.doc.annot_at(pno, (local.x(), local.y()))
         if xref is None:
             self.clear_selection()
+            self._start_band(sp, pno, False)
             return
         self.select(pno, xref)
+        if self.multi:                                    # annotazione di un gruppo: si sposta tutto il gruppo
+            self._drag = {"kind": "mmove", "start": sp, "orig": QRectF(self._sel.rect), "page": pno, "moved": False,
+                          "boxes": [QRectF(b.rect()) for b in self._multi_boxes]}
+            return
         if self.sel_info and self.sel_info.movable:
             self._drag = {"kind": "move", "start": sp, "orig": QRectF(self._sel.rect), "page": pno, "moved": False}
             self._make_ghost()
@@ -684,6 +838,20 @@ class DocView(QGraphicsView):
             r = self._snap_move(r, d["page"])
             self._sel.set_rect(r)
             self._place_ghost(r)
+        elif k == "band":
+            d["b"] = self._clamp(d["page"], sp)
+            self._preview.setRect(QRectF(d["a"], d["b"]).normalized())
+        elif k == "mmove":
+            delta = sp - d["start"]
+            if not d["moved"] and delta.manhattanLength() * self.transform().m11() < 3:
+                return
+            d["moved"] = True
+            r = self._snap_move(d["orig"].translated(delta), d["page"])
+            dd = r.topLeft() - d["orig"].topLeft()
+            d["delta"] = dd
+            for b, ob in zip(self._multi_boxes, d["boxes"]):
+                b.setRect(ob.translated(dd))
+            self._sel.set_rect(r)
         elif k == "resize":
             r = self._resized(d["orig"], d["handle"], sp - d["start"],
                               keep_ratio=not (e.modifiers() & Qt.ShiftModifier) and (
@@ -736,8 +904,34 @@ class DocView(QGraphicsView):
         self._drag = None
         k = d["kind"]
         pno = d["page"]
-        if k in ("stroke", "line", "rect"):
+        if k in ("stroke", "line", "rect", "band"):
             self._remove_preview()
+        if k == "band":
+            a, b = self._local(pno, d["a"]), self._local(pno, d["b"])
+            rr = QRectF(a, b).normalized()
+            if rr.width() < 3 and rr.height() < 3:
+                if not d.get("add"):
+                    self.clear_selection()
+                return
+            items = self.doc.objects_in_rect(pno, fitz.Rect(rr.left(), rr.top(), rr.right(), rr.bottom()))
+            if self.tool == "select":
+                items = [i for i in items if i["kind"] == "annot"]
+            # un elemento di un gruppo porta con sé tutto il gruppo
+            have = {self._item_key(i) for i in items}
+            for i in list(items):
+                if i["kind"] == "annot":
+                    for x in self.doc.annot_group(pno, i["xref"]):
+                        inf = self.doc.annot_info(pno, x)
+                        it = {"kind": "annot", "xref": x, "rect": fitz.Rect(inf.rect)} if inf else None
+                        if it and self._item_key(it) not in have:
+                            have.add(self._item_key(it)); items.append(it)
+            self._apply_items(pno, items)
+            return
+        if k == "mmove":
+            dd = d.get("delta")
+            if d.get("moved") and dd is not None and (abs(dd.x()) > 1e-6 or abs(dd.y()) > 1e-6):
+                self.multiMoveRequested.emit(pno, dd.x(), dd.y())
+            return
         if k == "stroke":
             pts = d["pts"]
             if len(pts) < 2:

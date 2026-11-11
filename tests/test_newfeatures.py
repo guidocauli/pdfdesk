@@ -262,7 +262,7 @@ class ContextMenuTests(unittest.TestCase):
         w, v = self.w, self.w.view
         v.select_content(0, w.pdf.content_at(0, (150, 190)))                 # immagine
         t = self.texts(w.build_context_menu(0, QPointF(150, 190)))
-        for x in ("Salva immagine…", "Segna per la redazione", "Elimina", "Salva l'area come immagine…"):
+        for x in ("Esporta immagine (PNG/JPG/TIFF)…", "Segna per la redazione", "Elimina", "Salva l'area come immagine…"):
             self.assertIn(x, t)
         v.select_content(0, w.pdf.content_at(0, (80, 75)))                   # testo
         t = self.texts(w.build_context_menu(0, QPointF(80, 75)))
@@ -458,3 +458,87 @@ class TextFlowSelectionTests(unittest.TestCase):
         self.assertEqual(len(self.p.flow_rects(0, (130, 98), (110, 138))), 3)
         with self.assertRaises(Exception):
             e = PdfDocument(); e.doc.new_page(); e.add_markup_flow(0, "hl", (1, 1), (2, 2))
+
+
+class ImagePropertiesTests(unittest.TestCase):
+    def setUp(self):
+        from PIL import Image
+        import io
+        im = Image.new("RGBA", (80, 40), (255, 0, 0, 255)); im.paste((0, 0, 255, 255), (0, 0, 40, 40))
+        b = io.BytesIO(); im.save(b, "PNG"); self.png = b.getvalue()
+        d = fitz.open(); pg = d.new_page(); pg.insert_image(fitz.Rect(100, 100, 260, 180), stream=self.png)
+        self.path = os.path.join(TMP, "imgp.pdf"); d.save(self.path)
+        self.p = PdfDocument.open(self.path)
+
+    def test_content_image_resize_rotate_replace_export(self):
+        o = self.p.content_at(0, (150, 140)); self.assertEqual(o["kind"], "image")
+        t = {"kind": "content", "obj": o}
+        pix = self.p.image_pixmap_of(0, t); self.assertEqual((pix.width, pix.height), (80, 40))
+        t2 = self.p.modify_image(0, t, fitz.Rect(100, 100, 200, 150))
+        info = self.p.doc[0].get_image_info()[0]["bbox"]
+        self.assertAlmostEqual(info[2] - info[0], 100, delta=1.5); self.assertAlmostEqual(info[3] - info[1], 50, delta=1.5)
+        t3 = self.p.modify_image(0, t2, self.p.image_rect_of(0, t2), angle=90)
+        b = self.p.doc[0].get_image_info()[0]["bbox"]
+        self.assertAlmostEqual(b[2] - b[0], 50, delta=1.5); self.assertAlmostEqual(b[3] - b[1], 100, delta=1.5)
+        from PIL import Image
+        import io
+        new = Image.new("RGB", (20, 20), (0, 255, 0)); bb = io.BytesIO(); new.save(bb, "PNG")
+        self.p.modify_image(0, t3, self.p.image_rect_of(0, t3), replacement=bb.getvalue())
+        t4 = {"kind": "content", "obj": self.p.content_at(0, (150, 150))}
+        pix = self.p.image_pixmap_of(0, t4); self.assertEqual(pix.width, 20)
+        for fmt in ("png", "jpg", "tiff"):
+            out = os.path.join(TMP, "exp." + fmt); self.p.export_image_of(0, t4, out, fmt); self.assertTrue(os.path.getsize(out) > 100)
+            self.assertEqual(Image.open(out).size, (20, 20))
+        for _ in range(4): self.p.undo()
+        self.assertEqual(self.p.image_pixmap_of(0, {"kind": "content", "obj": self.p.content_at(0, (150, 140))}).width, 80)
+
+    def test_stamp_image(self):
+        x = self.p.add_image(0, fitz.Rect(300, 300, 380, 340), self.png)
+        t = {"kind": "annot", "xref": x}
+        self.assertEqual(self.p.image_pixmap_of(0, t).width, 80)
+        t2 = self.p.modify_image(0, t, fitz.Rect(300, 300, 400, 350), angle=45)
+        r = self.p.image_rect_of(0, t2); self.assertGreater(r.width, 100)
+        self.assertEqual(self.p.image_pixmap_of(0, t2).alpha, 1)
+        self.p.undo(); self.assertAlmostEqual(self.p.image_rect_of(0, {"kind": "annot", "xref": x}).width, 80, delta=1)
+
+
+class GroupingMultiTests(unittest.TestCase):
+    def setUp(self):
+        d = fitz.open(); pg = d.new_page()
+        pg.insert_text((72, 100), "Blocco uno", fontsize=12)
+        pg.draw_rect(fitz.Rect(300, 300, 360, 340), color=(1, 0, 0), fill=(0, 1, 0))
+        self.path = os.path.join(TMP, "grp.pdf"); d.save(self.path)
+        self.p = PdfDocument.open(self.path)
+
+    def test_group_move_ungroup_undo(self):
+        a = self.p.add_shape(0, "rect", fitz.Rect(100, 200, 160, 240), (1, 0, 0), None, 2, 1.0)
+        b = self.p.add_shape(0, "ellipse", fitz.Rect(200, 200, 260, 240), (0, 0, 1), None, 2, 1.0)
+        self.p.group_annots(0, [a, b])
+        self.assertEqual(sorted(self.p.annot_group(0, a)), sorted([a, b]))
+        n0 = len(self.p._undo)
+        with self.p.batch("sposta"):
+            for x in self.p.annot_group(0, a):
+                r = self.p.annot_info(0, x).rect
+                self.p.set_rect(0, x, fitz.Rect(r) + (50, 0, 50, 0))
+        self.assertEqual(len(self.p._undo), n0 + 1)                     # un solo passo di annulla
+        self.assertEqual(len(self.p.annot_group(0, a)), 2)
+        self.p.undo()
+        self.assertAlmostEqual(self.p.annot_info(0, a).rect.x0, 100, delta=1)
+        self.assertEqual(self.p.ungroup_annots(0, [a]), 2)
+        self.assertEqual(self.p.annot_group(0, a), [a])
+        with self.assertRaises(Exception):
+            self.p.group_annots(0, [a])
+
+    def test_objects_in_rect_and_image_to_stamp(self):
+        objs = self.p.objects_in_rect(0, fitz.Rect(0, 0, 400, 400))
+        kinds = sorted(o["obj"]["kind"] for o in objs if o["kind"] == "content")
+        self.assertEqual(kinds, ["text", "vector"])
+        self.assertEqual(self.p.objects_in_rect(0, fitz.Rect(500, 500, 590, 590)), [])
+        from PIL import Image
+        import io
+        b = io.BytesIO(); Image.new("RGB", (30, 30), (0, 0, 255)).save(b, "PNG")
+        d = fitz.open(); pg = d.new_page(); pg.insert_image(fitz.Rect(100, 100, 160, 160), stream=b.getvalue()); pp = os.path.join(TMP, "i2.pdf"); d.save(pp)
+        q = PdfDocument.open(pp); o = q.content_at(0, (120, 120))
+        x = q.content_image_to_stamp(0, o)
+        self.assertIsNone(q.content_at(0, (120, 120)))
+        self.assertAlmostEqual(q.annot_info(0, x).rect.width, 60, delta=1)

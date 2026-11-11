@@ -102,6 +102,11 @@ La conversione usa **Ghostscript** (incluso nei pacchetti ufficiali; da sorgente
 - **Annulla** vale per tutte le operazioni sugli oggetti, anche nei PDF firmati (le firme restano valide finché non si compie un'operazione permanente; in tal caso vengono scartate solo al salvataggio).
 - **Firme e modifiche permanenti**: se in un PDF firmato modifichi, sposti o elimini testo e oggetti (o applichi redazioni), al salvataggio puoi scegliere «Mantieni le firme» (salvataggio incrementale: la firma resta valida per la revisione originale, ma il contenuto precedente resta recuperabile nel file) oppure «Scarta le firme». Lo spostamento del testo conserva font, corpo e colore originali.
 - **Selezione del testo**: copia testo, evidenzia, sottolinea e barra selezionano a righe, dal punto iniziale al finale anche su più righe, come in un lettore PDF; tenendo premuto **Alt** si seleziona invece ad area (rettangolo). Preferenze → Selezione del testo sceglie la modalità predefinita.
+- **Immagini** (inserite o già presenti nel PDF): Modifica → *Proprietà immagine…* (o tasto destro) permette di impostare larghezza e altezza in modo numerico (pt, mm, cm, pollici, px), bloccare/sbloccare le proporzioni, ruotare (anche di un angolo qualsiasi, con ↺/↻ 90°), sostituire l'immagine ed esportarla come PNG, JPG o TIFF.
+- **Selezione multipla**: con *Seleziona* e *Modifica oggetti* si selezionano più oggetti trascinando un rettangolo sulla pagina oppure cliccando con **Ctrl** premuto (di nuovo Ctrl+clic per toglierli); si spostano insieme (un solo passo di annulla) e si eliminano o segnano per la redazione tutti insieme. *Raggruppa* (Ctrl+G) unisce gli oggetti selezionati in un gruppo che si seleziona e si sposta come un tutt'uno; *Separa il gruppo* (Ctrl+Maiusc+G) lo scioglie. Possono far parte di un gruppo annotazioni, forme, caselle di testo, firme-immagine e immagini del PDF (che diventano oggetti-immagine); testo e grafica vettoriale del PDF si possono selezionare e spostare insieme ma non raggruppare.
+- **Menu contestuale** (tasto destro): *Segna per la redazione* / *Annulla redazione* è un interruttore, come il clic con lo strumento Redazione.
+- **Carattere dell'interfaccia**: Preferenze → *Carattere dell'interfaccia* ingrandisce o rimpicciolisce (70–200 %) il testo di menu, barre, pannelli e finestre.
+- **Lingua**: Preferenze → *Lingua* sceglie italiano o inglese (si applica al riavvio). Tutti i testi dell'interfaccia passano da `tr()` (modulo `pdfdesk/i18n.py`); il catalogo inglese è `pdfdesk/i18n_en.py`. Per aggiungere una lingua basta un catalogo analogo.
 - **Tema**: Preferenze → Tema (Come il sistema / Chiaro / Scuro). «Come il sistema» segue Windows, macOS e, su Linux, il portale/GNOME/KDE.
 - **Menu a tendina**: su Wayland i menu popup di Qt possono comparire staccati dalla barra; per questo, di default, su Wayland le tendine sono disegnate dentro la finestra (Preferenze → Menu a tendina: Automatico / Integrati / Standard di Qt). Con i menu integrati si naviga con il mouse e Esc chiude.
 - Il menu usa la barra dei menu della finestra (non quella nativa di sistema): le voci si aprono sotto il proprio titolo.
@@ -115,7 +120,7 @@ La conversione usa **Ghostscript** (incluso nei pacchetti ufficiali; da sorgente
 
 Da terminale: `pdfdesk --version`, `pdfdesk --compress in.pdf out.pdf --preset medium`, `pdfdesk --verify file.pdf`, `pdfdesk --selftest`.
 
-## Limiti noti (versione 0.5)
+## Limiti noti
 
 - **Redazione e modifiche permanenti**: l'applicazione elimina davvero dal file testo, immagini e grafica sotto le aree, oltre a note/commenti e campi compilati sovrapposti e all'anteprima incorporata della pagina (verificato con scansione di tutti gli oggetti e i flussi del file salvato, anche sui PDF firmati, che vengono riscritti per intero: le firme sono rimosse perché un salvataggio incrementale conserverebbe la revisione originale). Prima di sovrascrivere il file originale con modifiche irreversibili compare un avviso che consiglia «Salva con nome». I metadati (titolo, autore…), i segnalibri e gli allegati non vengono modificati: per i metadati usa «Salva con nome» → rimuovi metadati.
 

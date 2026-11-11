@@ -28,13 +28,19 @@ class _Row(QWidget):
         self.label = act.text().replace("&&", "\0").replace("&", "").replace("\0", "&").split("\t")[0]
         self.wanted = 32 + fm.horizontalAdvance(self.label) + (34 + fm.horizontalAdvance(self.sc) if self.sc else 0) + 24
         self.setFixedHeight(max(24, fm.height() + 8))
-        self.setToolTip(act.toolTip() if act.toolTip() and act.toolTip() != self.label else "")
+        # niente tooltip: sotto Wayland è una finestra a parte che può «mangiare» il clic; il suggerimento va nella barra di stato
+        self.tip = act.toolTip() if act.toolTip() and act.toolTip() != self.label else ""
 
     def sizeHint(self) -> QSize:
         return QSize(self.wanted, self.height())
 
     def enterEvent(self, e) -> None:
         self.panel.row_hover(self)
+        try:
+            sb = self.panel.mgr.window.statusBar()
+            sb.showMessage(self.tip.split("\n")[0] if self.tip else "", 4000)
+        except Exception:
+            pass
 
     def leaveEvent(self, e) -> None:
         if not self.act.menu():
@@ -43,9 +49,12 @@ class _Row(QWidget):
 
     def mousePressEvent(self, e) -> None:
         e.accept()                                    # senza questo il clic risale alla finestra e chiuderebbe la tendina
+        self._armed = e.button() == Qt.LeftButton
+        self.panel.row_hover(self)                    # il clic vale anche se l'entrata del mouse non è stata recapitata
 
     def mouseReleaseEvent(self, e) -> None:
-        if e.button() == Qt.LeftButton:
+        if e.button() == Qt.LeftButton and getattr(self, "_armed", True):
+            self._armed = False
             self.panel.row_clicked(self)
 
     def paintEvent(self, e) -> None:

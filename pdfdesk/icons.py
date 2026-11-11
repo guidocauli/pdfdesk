@@ -131,6 +131,25 @@ def _redact(p, c):
     p.setBrush(c); p.drawRect(QRectF(7, 17, 34, 14))
 
 
+def _group(p, c):
+    p.drawRect(QRectF(6, 8, 18, 14)); p.drawRect(QRectF(24, 26, 18, 14))
+    pen = QPen(p.pen()); pen.setStyle(Qt.DashLine); pen.setWidthF(2.0); p.setPen(pen); p.setBrush(Qt.NoBrush)
+    p.drawRect(QRectF(3, 5, 42, 38))
+
+
+def _ungroup(p, c):
+    p.drawRect(QRectF(5, 7, 18, 14)); p.drawRect(QRectF(27, 27, 16, 14))
+    pen = QPen(p.pen()); pen.setStyle(Qt.DashLine); pen.setWidthF(2.0); p.setPen(pen)
+    p.drawLine(24, 24, 28, 24)
+
+
+def _applyred(p, c):
+    p.setBrush(c); p.drawRect(QRectF(5, 9, 30, 11))
+    p.setBrush(Qt.NoBrush)
+    pen = QPen(p.pen()); pen.setWidthF(max(pen.widthF(), 3.2)); p.setPen(pen)
+    p.drawPolyline(QPolygonF([QPointF(14, 31), QPointF(21, 39), QPointF(41, 22)]))
+
+
 def _edittext(p, c):
     p.drawRect(QRectF(7, 10, 34, 28)); p.drawLine(14, 20, 34, 20); p.drawLine(14, 28, 26, 28)
 
@@ -335,7 +354,7 @@ def _scan(p, c):
 
 _DRAW = {"merge": _merge, "scan": _scan, "select": _select, "hand": _hand, "textsel": _textsel, "pen": _pen, "highlighter": _highlighter, "rect": _rect,
          "ellipse": _ellipse, "line": _line, "arrow": _arrow, "text": _text, "image": _image, "sign": _sign, "hl": _hl,
-         "ul": _ul, "st": _st, "redact": _redact, "edittext": _edittext, "eraser": _eraser, "sigbox": _sign, "app": _app,
+         "ul": _ul, "st": _st, "redact": _redact, "applyred": _applyred, "group": _group, "ungroup": _ungroup, "edittext": _edittext, "eraser": _eraser, "sigbox": _sign, "app": _app,
          "open": _open, "save": _save, "saveas": _saveas, "new": _new, "undo": _undo, "redo": _redo, "zoom": _mag,
          "zin": _zin, "zout": _zout, "fitw": _fitw, "fitp": _fitp, "rotl": _rotl, "rotr": _rotr, "sigdig": _badge,
          "verify": _shield, "std": _std, "prefs": _gear, "dup": _dup, "blank": _blank, "insert": _insert,

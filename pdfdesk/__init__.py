@@ -3,7 +3,7 @@
 # Licenza: AGPL-3.0-or-later (usa PyMuPDF, anch'esso AGPL)
 """PDFDesk — Guido Cauli <guido.cauli@gmail.com>"""
 
-__version__ = "0.6.1"
+__version__ = "0.7.0"
 APP_NAME = "PDFDesk"
 AUTHOR = "Guido Cauli <guido.cauli@gmail.com>"
 CREDITS = f"{APP_NAME} — {AUTHOR}"

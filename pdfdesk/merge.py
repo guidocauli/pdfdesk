@@ -8,6 +8,7 @@ from typing import Callable, Optional
 import pymupdf as fitz
 
 from .export import parse_pages
+from .i18n import tr
 
 IMAGE_EXT = (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".gif", ".webp")
 
@@ -34,7 +35,7 @@ def _open_source(path: str, password: str) -> fitz.Document:
     d = fitz.open(path)
     if d.is_pdf:
         if d.needs_pass and not d.authenticate(password or ""):
-            raise MergeError(f"{os.path.basename(path)}: password mancante o errata")
+            raise MergeError(tr("{}: password mancante o errata").format(os.path.basename(path)))
         return d
     # immagine → PDF di una pagina (dimensione secondo la risoluzione dichiarata, 72 dpi se assente)
     pdf = fitz.open("pdf", d.convert_to_pdf())
@@ -50,13 +51,13 @@ def merge_pdfs(items: list[dict], out_path: str, bookmarks: bool = True,
     `bookmarks`: aggiunge un segnalibro per ogni file sorgente. Restituisce il numero di pagine scritte.
     """
     if not items:
-        raise MergeError("Nessun file da unire")
+        raise MergeError(tr("Nessun file da unire"))
     out = fitz.open()
     toc, n = [], len(items)
     try:
         for i, it in enumerate(items):
             if progress and progress(i, n) is False:
-                raise MergeError("Operazione annullata")
+                raise MergeError(tr("Operazione annullata"))
             src = _open_source(it["path"], it.get("password", ""))
             try:
                 try:
@@ -72,7 +73,7 @@ def merge_pdfs(items: list[dict], out_path: str, bookmarks: bool = True,
             finally:
                 src.close()
         if out.page_count == 0:
-            raise MergeError("Nessuna pagina da unire")
+            raise MergeError(tr("Nessuna pagina da unire"))
         if bookmarks and toc:
             out.set_toc(toc)
         if title:

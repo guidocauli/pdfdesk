@@ -2,6 +2,7 @@
 # core.py: modello del documento PDF (annotazioni reali, annulla/ripeti, pagine, redazione).
 from __future__ import annotations
 
+import contextlib
 import os
 import math
 import re
@@ -14,6 +15,7 @@ import pymupdf as fitz
 from . import imgutil
 
 from . import fonts, pdfstd, textbox
+from .i18n import tr
 
 
 def _pdf_str_decode(v: str) -> str:
@@ -60,7 +62,7 @@ def display_to_pdf_date(t: str) -> str:
         return t
     m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?\s*(UTC|Z|[+\-]\d{2}:?\d{2})?", t)
     if not m:
-        raise ValueError(f"Data non valida: «{t}» (usa AAAA-MM-GG hh:mm:ss [+hh:mm])")
+        raise ValueError(tr("Data non valida: «{}» (usa AAAA-MM-GG hh:mm:ss [+hh:mm])").format(t))
     y, mo, da, h, mi, se, tz = m.groups()
     out = f"D:{y}{mo}{da}{h or '00'}{mi or '00'}{se or '00'}"
     if tz in ("UTC", "Z"):
@@ -210,6 +212,9 @@ class PdfDocument:
         return bool(self._destr)
 
     def _mark_permanent(self) -> None:
+        pos = len(self._undo) if not self.is_signed else self._ALWAYS
+        if getattr(self, "_batch", False) and self._destr and self._destr[-1] == pos:
+            return
         self._destr.append(len(self._undo) if not self.is_signed else self._ALWAYS)
 
     # ------------------------------------------------------------------ apertura/chiusura
@@ -291,8 +296,20 @@ class PdfDocument:
     def _snapshot(self) -> bytes:
         return self.doc.tobytes(garbage=0)
 
+    @contextlib.contextmanager
+    def batch(self, label: str):
+        """Più operazioni (p.es. su più oggetti) in un solo passo di annulla."""
+        self._begin(label)
+        self._batch = True
+        try:
+            yield
+        finally:
+            self._batch = False
+
     def _begin(self, label: str = "") -> None:
         """Da chiamare PRIMA di ogni modifica: salva lo stato per annulla/ripeti."""
+        if getattr(self, "_batch", False):
+            return
         self._undo.append(self._snapshot())
         total = sum(len(b) for b in self._undo)
         while len(self._undo) > 1 and total > self.MAX_UNDO_BYTES:
@@ -380,8 +397,8 @@ class PdfDocument:
         page = self.doc[pno]
         pts = [[tuple(to_page_pt(page, p)) for p in s] for s in strokes if len(s) >= 2]
         if not pts:
-            raise PdfError("tratto vuoto")
-        self._begin("tratto")
+            raise PdfError(tr("tratto vuoto"))
+        self._begin(tr("tratto"))
         a = page.add_ink_annot(pts)
         a.set_border(width=float(width))
         a.set_colors(stroke=color)
@@ -400,8 +417,8 @@ class PdfDocument:
         page = self.doc[pno]
         r = to_page_rect(page, rect)
         if r.width < 1 or r.height < 1:
-            raise PdfError("area troppo piccola")
-        self._begin("forma")
+            raise PdfError(tr("area troppo piccola"))
+        self._begin(tr("forma"))
         a = page.add_rect_annot(r) if kind == "rect" else page.add_circle_annot(r)
         self._style(a, stroke=stroke or (0, 0, 0), fill=fill, width=width if stroke else 0, opacity=opacity)
         return a.xref
@@ -409,7 +426,7 @@ class PdfDocument:
     def add_line(self, pno: int, p1: Point, p2: Point, stroke: Color = (0, 0, 0), width: float = 2.0,
                  arrow: bool = False, opacity: float = 1.0) -> int:
         page = self.doc[pno]
-        self._begin("linea")
+        self._begin(tr("linea"))
         a = page.add_line_annot(to_page_pt(page, p1), to_page_pt(page, p2))
         if arrow:
             a.set_line_ends(fitz.PDF_ANNOT_LE_NONE, fitz.PDF_ANNOT_LE_CLOSED_ARROW)
@@ -428,8 +445,8 @@ class PdfDocument:
         if custom:
             path = fonts.resolve(fontname)
             if not path:
-                raise PdfError(f"Font «{fontname[1:]}» non disponibile: aggiungilo dalla libreria font.")
-        self._begin("testo")
+                raise PdfError(tr("Font «{}» non disponibile: aggiungilo dalla libreria font.").format(fontname[1:]))
+        self._begin(tr("testo"))
         a = page.add_freetext_annot(r, text, fontsize=float(fontsize), fontname="helv" if custom else fontname,
                                     text_color=color, fill_color=fill, border_width=float(border),
                                     rotate=page.rotation)
@@ -451,7 +468,7 @@ class PdfDocument:
         name = self._custom_font(xref)
         path = fonts.resolve("@" + name) if name else None
         if not path:
-            raise PdfError(f"Font «{name}» non disponibile: aggiungilo dalla libreria font oppure scegli un altro carattere.")
+            raise PdfError(tr("Font «{}» non disponibile: aggiungilo dalla libreria font oppure scegli un altro carattere.").format(name))
         rect = fitz.Rect(a.rect)
         rot = page.rotation
         args = (rect.width, rect.height, info.text, path, info.fontsize, info.text_color, info.fill, info.width, rot)
@@ -462,7 +479,7 @@ class PdfDocument:
         """Timbro con immagine (PNG con trasparenza supportata): firma olografica, logo, foto."""
         page = self.doc[pno]
         r = to_page_rect(page, rect)
-        self._begin("immagine")
+        self._begin(tr("immagine"))
         a = page.add_stamp_annot(r, stamp=png_bytes)
         if not keep_ratio:
             a.set_rect(r)
@@ -533,8 +550,8 @@ class PdfDocument:
 
     def _add_markup_quads(self, page: fitz.Page, kind: str, quads: list) -> int:
         if not quads:
-            raise PdfError("nessun testo nella selezione")
-        self._begin("marcatura")
+            raise PdfError(tr("nessun testo nella selezione"))
+        self._begin(tr("marcatura"))
         if kind == "hl":
             a = page.add_highlight_annot(quads=quads)
         elif kind == "ul":
@@ -585,7 +602,7 @@ class PdfDocument:
     def add_redact(self, pno: int, rect) -> int:
         page = self.doc[pno]
         r = to_page_rect(page, rect)
-        self._begin("area di redazione")
+        self._begin(tr("area di redazione"))
         a = page.add_redact_annot(r, fill=(0, 0, 0))
         return a.xref
 
@@ -607,7 +624,7 @@ class PdfDocument:
     def apply_redactions(self, strip_metadata: bool = False) -> int:
         """Applica in modo permanente tutte le redazioni: rimuove testo, immagini e grafica sottostanti."""
         total = 0
-        self._begin("applica redazioni")
+        self._begin(tr("applica redazioni"))
         for page in self.doc:
             areas = [fitz.Rect(a.rect) for a in page.annots() if a.type[0] == T_REDACT]
             if areas:
@@ -663,7 +680,7 @@ class PdfDocument:
     def set_metadata(self, standard: dict, custom: dict, xmp: Optional[str] = None, remove_xmp: bool = False) -> None:
         """Imposta i campi standard e quelli personalizzati (le chiavi non presenti in `custom` vengono eliminate);
         `xmp`: nuovo blocco XMP; `remove_xmp`: elimina il blocco XMP."""
-        self._begin("metadati")
+        self._begin(tr("metadati"))
         info = {k: (standard.get(k) or "") for k in self.STD_META}
         self.doc.set_metadata(info)
         x = self._info_xref(create=True)
@@ -835,7 +852,7 @@ class PdfDocument:
             sp.add_redact_annot(old, fill=False)
             sp.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE, text=fitz.PDF_REDACT_TEXT_NONE,
                                 graphics=fitz.PDF_REDACT_LINE_ART_REMOVE_IF_COVERED)
-            self._begin("sposta testo")
+            self._begin(tr("sposta testo"))
             self._mark_permanent()
             self._erase(page, old, text=True)
             page.show_pdf_page(fitz.Rect(old.x0 + dx, old.y0 + dy, old.x1 + dx, old.y1 + dy), src, 0, clip=old)
@@ -854,7 +871,7 @@ class PdfDocument:
         dest = to_page_rect(page, new_rect)
         dx, dy = dest.x0 - old.x0, dest.y0 - old.y0
         fonts_ = self._span_fonts(page, spans)
-        self._begin("sposta testo")
+        self._begin(tr("sposta testo"))
         self._mark_permanent()
         self._erase(page, old, text=True)
         tw = {}
@@ -875,7 +892,7 @@ class PdfDocument:
         """Sostituisce il testo di un blocco: rimuove il testo originale (solo testo) e scrive il nuovo
         (in `dest`, se indicato: sposta/ridimensiona il blocco)."""
         page = self.doc[pno]
-        self._begin("modifica testo")
+        self._begin(tr("modifica testo"))
         self._mark_permanent()
         self._erase(page, to_page_rect(page, rect), text=True)
         r = to_page_rect(page, dest if dest is not None else rect)
@@ -884,7 +901,7 @@ class PdfDocument:
         if fonts.is_custom(fontname):
             path = fonts.resolve(fontname)
             if not path:
-                raise PdfError(f"Font «{fontname[1:]}» non disponibile.")
+                raise PdfError(tr("Font «{}» non disponibile.").format(fontname[1:]))
             kw = {"fontname": "PdfdeskF", "fontfile": path}
         else:
             kw = {"fontname": fontname}
@@ -1000,9 +1017,120 @@ class PdfDocument:
             return None
         return min(cands, key=lambda x: x[0])[1]
 
+    # ------------------------------------------------------------------ gruppi di annotazioni e selezione multipla
+    def annot_group_id(self, xref: int) -> Optional[str]:
+        try:
+            k = self.doc.xref_get_key(xref, "PDFDeskGroup")
+        except Exception:
+            return None
+        return k[1] if k and k[0] == "string" else None
+
+    def annot_group(self, pno: int, xref: int) -> list[int]:
+        """xref di tutte le annotazioni del gruppo a cui appartiene `xref` (solo se stesso se non è raggruppata)."""
+        gid = self.annot_group_id(xref)
+        if not gid:
+            return [xref]
+        page = self.doc[pno]
+        res = [a.xref for a in page.annots() if self.annot_group_id(a.xref) == gid]
+        return res or [xref]
+
+    def group_annots(self, pno: int, xrefs: Sequence[int]) -> str:
+        """Raggruppa le annotazioni: spostarne una sposta tutto il gruppo. Annullabile."""
+        import uuid
+        xs = list(dict.fromkeys(xrefs))
+        if len(xs) < 2:
+            raise PdfError(tr("Servono almeno due oggetti per fare un gruppo."))
+        gid = "g" + uuid.uuid4().hex[:10]
+        self._begin(tr("raggruppa"))
+        for x in xs:
+            self.doc.xref_set_key(x, "PDFDeskGroup", f"({gid})")
+        return gid
+
+    def ungroup_annots(self, pno: int, xrefs: Sequence[int]) -> int:
+        """Separa i gruppi a cui appartengono le annotazioni indicate. Restituisce quanti oggetti sono stati liberati."""
+        page = self.doc[pno]
+        gids = {self.annot_group_id(x) for x in xrefs} - {None}
+        if not gids:
+            return 0
+        members = [a.xref for a in page.annots() if self.annot_group_id(a.xref) in gids]
+        self._begin(tr("separa gruppo"))
+        for x in members:
+            self.doc.xref_set_key(x, "PDFDeskGroup", "null")
+        return len(members)
+
+    def content_image_to_stamp(self, pno: int, obj: dict) -> int:
+        """Trasforma un'immagine del PDF in un timbro-immagine (oggetto raggruppabile). Da usare dentro `batch`."""
+        page = self.doc[pno]
+        png = imgutil.to_png_bytes(imgutil.image_pixmap(self.doc, obj["xref"]).tobytes("png"))
+        old = fitz.Rect(obj["page_rect"])
+        self._begin(tr("immagine in oggetto"))
+        self._mark_permanent()
+        ins = 1.0 if min(old.width, old.height) > 4 else 0.0
+        self._erase(page, old + (ins, ins, -ins, -ins), images=True)
+        a = page.add_stamp_annot(old, stamp=png)
+        a.set_rect(old)
+        return a.xref
+
+    def objects_in_rect(self, pno: int, rect) -> list[dict]:
+        """Oggetti toccati dal rettangolo (coordinate di visualizzazione): annotazioni selezionabili e contenuto del PDF
+        (blocchi di testo, immagini, grafica). Voci: {"kind": "annot", "xref", "rect"} o {"kind": "content", "obj", "rect"}."""
+        page = self.doc[pno]
+        r = fitz.Rect(rect)
+        out: list[dict] = []
+        for a in page.annots():
+            if a.type[0] in (fitz.PDF_ANNOT_LINK, fitz.PDF_ANNOT_POPUP, fitz.PDF_ANNOT_WIDGET):
+                continue
+            ar = to_display_rect(page, a.rect)
+            if ar.intersects(r):
+                out.append({"kind": "annot", "xref": a.xref, "rect": ar})
+        seen = []
+        pr = to_page_rect(page, r)
+        for b in page.get_text("dict")["blocks"]:
+            if b.get("type") == 0 and fitz.Rect(b["bbox"]).intersects(pr):
+                c = fitz.Rect(b["bbox"]); mid = (c.x0 + c.width / 2, c.y0 + c.height / 2)
+                o = self.content_at_page_pt(pno, mid, text_only=True)
+                if o:
+                    out.append({"kind": "content", "obj": o, "rect": fitz.Rect(o["rect"])})
+        for im in page.get_image_info(xrefs=True):
+            ir = fitz.Rect(im["bbox"])
+            if im.get("xref") and ir.intersects(pr) and ir.get_area() < 0.98 * page.rect.get_area() * 4:
+                o = {"kind": "image", "xref": im["xref"], "page_rect": ir, "rect": to_display_rect(page, ir)}
+                out.append({"kind": "content", "obj": o, "rect": fitz.Rect(o["rect"])})
+        try:
+            draws = page.get_drawings()
+        except Exception:
+            draws = []
+        for d in draws:
+            dr = fitz.Rect(d["rect"])
+            if dr.get_area() > 0.9 * page.rect.get_area() or not dr.intersects(pr):
+                continue
+            pad = max(float(d.get("width") or 0) / 2, 0.5) + 0.5
+            inf = dr + (-pad, -pad, pad, pad)
+            group = [x for x in draws if x["rect"][0] >= inf.x0 and x["rect"][1] >= inf.y0
+                     and x["rect"][2] <= inf.x1 and x["rect"][3] <= inf.y1]
+            u = fitz.Rect(group[0]["rect"])
+            for x in group[1:]:
+                u |= fitz.Rect(x["rect"])
+            key = tuple(round(v) for v in u)
+            if key in seen:
+                continue
+            seen.append(key)
+            o = {"kind": "vector", "draws": group, "page_rect": u, "rect": to_display_rect(page, u + (-pad, -pad, pad, pad))}
+            out.append({"kind": "content", "obj": o, "rect": fitz.Rect(o["rect"])})
+        return out
+
+    def content_at_page_pt(self, pno: int, pt, text_only: bool = False) -> Optional[dict]:
+        page = self.doc[pno]
+        disp = fitz.Point(pt) * page.rotation_matrix
+        blk = self.text_block_at(pno, disp)
+        if blk:
+            blk["kind"] = "text"
+            return blk
+        return None if text_only else self.content_at(pno, disp)
+
     def delete_content(self, pno: int, obj: dict) -> None:
         page = self.doc[pno]
-        self._begin("elimina oggetto")
+        self._begin(tr("elimina oggetto"))
         self._mark_permanent()
         k = obj["kind"]
         if k == "text":
@@ -1013,6 +1141,86 @@ class PdfDocument:
             r = fitz.Rect(obj["page_rect"])
             ins = 1.0 if min(r.width, r.height) > 4 else 0.0
             self._erase(page, r + (ins, ins, -ins, -ins), images=True)
+
+    # ------------------------------------------------------------------ proprietà delle immagini (inserite o già presenti)
+    def image_pixmap_of(self, pno: int, target: dict) -> fitz.Pixmap:
+        """Pixmap (con trasparenza) di un'immagine: timbro inserito {"kind": "annot", "xref"} o immagine del contenuto
+        {"kind": "content", "obj"}."""
+        if target["kind"] == "content":
+            return imgutil.image_pixmap(self.doc, target["obj"]["xref"])
+        page = self.doc[pno]
+        a = self._find(page, target["xref"])
+        if a is None:
+            raise PdfError(tr("Immagine non trovata."))
+        ap = self.doc.xref_get_key(a.xref, "AP/N")
+        if ap[0] == "xref":
+            n = int(ap[1].split()[0])
+            res = self.doc.xref_get_key(n, "Resources/XObject")
+            if res[0] == "dict":
+                import re
+                for m in re.finditer(r"/(\S+)\s+(\d+)\s+0\s+R", res[1]):
+                    x = int(m.group(2))
+                    if self.doc.xref_get_key(x, "Subtype")[1] == "/Image":
+                        return imgutil.image_pixmap(self.doc, x)
+        return a.get_pixmap(dpi=300, alpha=True)
+
+    def image_rect_of(self, pno: int, target: dict) -> fitz.Rect:
+        if target["kind"] == "content":
+            return fitz.Rect(target["obj"]["rect"])
+        page = self.doc[pno]
+        a = self._find(page, target["xref"])
+        if a is None:
+            raise PdfError(tr("Immagine non trovata."))
+        return to_display_rect(page, a.rect)
+
+    def modify_image(self, pno: int, target: dict, new_rect, angle: float = 0.0, replacement: Optional[bytes] = None) -> dict:
+        """Ridimensiona (new_rect = dimensione finale prima della rotazione), ruota (gradi in senso orario, attorno al centro;
+        la rotazione si applica alla bitmap con trasparenza) e/o sostituisce un'immagine. Tutto annullabile."""
+        import io, math
+        from PIL import Image
+        page = self.doc[pno]
+        if target["kind"] == "content" and page.rotation:
+            raise PdfError(tr("Le immagini del PDF non si modificano sulle pagine ruotate."))
+        if replacement is not None:
+            png = imgutil.to_png_bytes(replacement)
+        else:
+            png = imgutil.to_png_bytes(self.image_pixmap_of(pno, target).tobytes("png"))
+        nr = to_page_rect(page, new_rect)
+        w, h = max(nr.width, 1.0), max(nr.height, 1.0)
+        if abs(angle) > 1e-6:
+            im = Image.open(io.BytesIO(png)).convert("RGBA")
+            im = im.rotate(-angle, expand=True, resample=Image.BICUBIC)
+            buf = io.BytesIO(); im.save(buf, "PNG"); png = buf.getvalue()
+            t = math.radians(angle)
+            w2 = w * abs(math.cos(t)) + h * abs(math.sin(t))
+            h2 = w * abs(math.sin(t)) + h * abs(math.cos(t))
+            cx, cy = (nr.x0 + nr.x1) / 2, (nr.y0 + nr.y1) / 2
+            nr = fitz.Rect(cx - w2 / 2, cy - h2 / 2, cx + w2 / 2, cy + h2 / 2)
+        self._begin(tr("modifica immagine"))
+        if target["kind"] == "content":
+            self._mark_permanent()
+            old = fitz.Rect(target["obj"]["page_rect"])
+            ins = 1.0 if min(old.width, old.height) > 4 else 0.0
+            self._erase(page, old + (ins, ins, -ins, -ins), images=True)
+            page.insert_image(nr, stream=png, keep_proportion=False)
+            obj = dict(target["obj"]); obj["rect"] = to_display_rect(page, nr); obj["page_rect"] = nr
+            return {"kind": "content", "obj": self.content_at(pno, (nr.x0 + nr.width / 2, nr.y0 + nr.height / 2)) or obj}
+        gid = self.annot_group_id(target["xref"])
+        a = self._find(page, target["xref"])
+        if a is not None:
+            page.delete_annot(a)
+        a = page.add_stamp_annot(nr, stamp=png)
+        a.set_rect(nr)
+        if gid:
+            self.doc.xref_set_key(a.xref, "PDFDeskGroup", f"({gid})")
+        return {"kind": "annot", "xref": a.xref}
+
+    def export_image_of(self, pno: int, target: dict, path: str, fmt: str, quality: int = 90) -> None:
+        from . import extract
+        pix = self.image_pixmap_of(pno, target)
+        r = self.image_rect_of(pno, target)
+        dpi = int(pix.width / (r.width / 72)) if r.width > 0 else None
+        extract.write_pixmap(pix, path, fmt, quality, dpi)
 
     def move_content(self, pno: int, obj: dict, new_rect) -> None:
         """Sposta/ridimensiona un oggetto del contenuto (new_rect in coordinate di visualizzazione)."""
@@ -1034,16 +1242,16 @@ class PdfDocument:
         old = fitz.Rect(obj["page_rect"])
         if k == "image":
             if page.rotation:
-                raise PdfError("Lo spostamento delle immagini del PDF non è supportato sulle pagine ruotate.")
+                raise PdfError(tr("Lo spostamento delle immagini del PDF non è supportato sulle pagine ruotate."))
             xref = obj["xref"]
             d = self.doc.extract_image(xref)
             if not d:
-                raise PdfError("Immagine non estraibile.")
+                raise PdfError(tr("Immagine non estraibile."))
             try:
                 args = {"pixmap": imgutil.image_pixmap(self.doc, xref)}       # conserva ogni forma di trasparenza
             except Exception:
                 args = {"stream": d["image"]}
-            self._begin("sposta immagine")
+            self._begin(tr("sposta immagine"))
             ins = 1.0 if min(old.width, old.height) > 4 else 0.0
             self._erase(page, old + (ins, ins, -ins, -ins), images=True)
             page.insert_image(nr, keep_proportion=False, **args)
@@ -1056,7 +1264,7 @@ class PdfDocument:
             pt = fitz.Point(pt)
             return fitz.Point(nr.x0 + (pt.x - old.x0) * sx, nr.y0 + (pt.y - old.y0) * sy)
 
-        self._begin("sposta grafica")
+        self._begin(tr("sposta grafica"))
         self._erase_graphics(page, old + (-1.5, -1.5, 1.5, 1.5), len(obj["draws"]))
         for d in obj["draws"]:
             sh = page.new_shape()
@@ -1147,7 +1355,7 @@ class PdfDocument:
         a = self._find(page, xref)
         if not a:
             return False
-        self._begin("elimina annotazione")
+        self._begin(tr("elimina annotazione"))
         page.delete_annot(a)
         return True
 
@@ -1156,9 +1364,9 @@ class PdfDocument:
         page = self.doc[pno]
         a = self._find(page, xref)
         if not a:
-            raise PdfError("annotazione non trovata")
+            raise PdfError(tr("annotazione non trovata"))
         t = a.type[0]
-        self._begin("proprietà")
+        self._begin(tr("proprietà"))
         if t == T_FREETEXT:
             cur = self._info(page, a)
             if text is not None:
@@ -1171,7 +1379,7 @@ class PdfDocument:
             custom = fonts.is_custom(newfont)
             if custom:
                 if not fonts.resolve(newfont):
-                    raise PdfError(f"Font «{newfont[1:]}» non disponibile: aggiungilo dalla libreria font.")
+                    raise PdfError(tr("Font «{}» non disponibile: aggiungilo dalla libreria font.").format(newfont[1:]))
             a.update(fontsize=float(fontsize or cur.fontsize), fontname="helv" if custom else newfont,
                      text_color=tc, fill_color=fillc, opacity=opacity if opacity is not None else cur.opacity)
             xr = a.xref
@@ -1197,17 +1405,24 @@ class PdfDocument:
         return a.xref
 
     def set_rect(self, pno: int, xref: int, new_rect) -> int:
-        """Sposta/ridimensiona un'annotazione. Restituisce l'xref (cambia per tratti e linee, ricostruiti)."""
+        """Sposta/ridimensiona un'annotazione. Restituisce l'xref (cambia per tratti e linee, ricostruiti); il gruppo si conserva."""
+        gid = self.annot_group_id(xref)
+        nx = self._set_rect_impl(pno, xref, new_rect)
+        if gid and nx != xref:
+            self.doc.xref_set_key(nx, "PDFDeskGroup", f"({gid})")
+        return nx
+
+    def _set_rect_impl(self, pno: int, xref: int, new_rect) -> int:
         page = self.doc[pno]
         a = self._find(page, xref)
         if not a:
-            raise PdfError("annotazione non trovata")
+            raise PdfError(tr("annotazione non trovata"))
         t = a.type[0]
         nr = to_page_rect(page, new_rect)
         if nr.width < 1 or nr.height < 1:
             nr = fitz.Rect(nr.x0, nr.y0, nr.x0 + max(nr.width, 1), nr.y0 + max(nr.height, 1))
         if t in RECT_TYPES:
-            self._begin("sposta")
+            self._begin(tr("sposta"))
             old = fitz.Rect(a.rect)
             a.set_rect(nr)
             xr = a.xref
@@ -1221,7 +1436,7 @@ class PdfDocument:
             return xr
         if t in REBUILD_TYPES:
             return self._rebuild_vertices(page, a, nr)
-        raise PdfError("questo tipo di annotazione non si può spostare")
+        raise PdfError(tr("questo tipo di annotazione non si può spostare"))
 
     def _refresh_freetext(self, page: fitz.Page, a: fitz.Annot) -> None:
         info = self._info(page, a)
@@ -1254,7 +1469,7 @@ class PdfDocument:
             blend = self.doc.xref_get_key(a.xref, "BM")[1]
         except Exception:
             pass
-        self._begin("sposta")
+        self._begin(tr("sposta"))
         page.delete_annot(a)
         if t == T_INK:
             na = page.add_ink_annot([[m(p) for p in stroke] for stroke in verts])
@@ -1279,7 +1494,7 @@ class PdfDocument:
 
     # ------------------------------------------------------------------ pagine
     def rotate_pages(self, pnos: Sequence[int], delta: int) -> None:
-        self._begin("ruota pagine")
+        self._begin(tr("ruota pagine"))
         for p in pnos:
             pg = self.doc[p]
             pg.set_rotation((pg.rotation + delta) % 360)
@@ -1303,31 +1518,31 @@ class PdfDocument:
 
     def delete_pages(self, pnos: Sequence[int]) -> None:
         if len(set(pnos)) >= self.page_count:
-            raise PdfError("non si possono eliminare tutte le pagine")
-        self._begin("elimina pagine")
+            raise PdfError(tr("non si possono eliminare tutte le pagine"))
+        self._begin(tr("elimina pagine"))
         self.doc.delete_pages(sorted(set(pnos)))
 
     def move_page(self, src: int, dest_before: int) -> None:
-        self._begin("sposta pagina")
+        self._begin(tr("sposta pagina"))
         self.doc.move_page(src, -1 if dest_before >= self.page_count else dest_before)
 
     def duplicate_page(self, pno: int) -> None:
         if not 0 <= pno < self.page_count:
-            raise PdfError("pagina inesistente")
-        self._begin("duplica pagina")
+            raise PdfError(tr("pagina inesistente"))
+        self._begin(tr("duplica pagina"))
         self.doc.fullcopy_page(pno, pno + 1 if pno + 1 < self.page_count else -1)      # -1 = in fondo
 
     def insert_blank(self, after: int) -> None:
         w, h = self.page_size(min(max(after, 0), self.page_count - 1))
         pg = self.doc[min(max(after, 0), self.page_count - 1)]
-        self._begin("pagina vuota")
+        self._begin(tr("pagina vuota"))
         self.doc.new_page(pno=after + 1, width=pg.mediabox.width, height=pg.mediabox.height)
 
     def insert_pdf(self, path: str, after: int, password: Optional[str] = None) -> int:
         src = fitz.open(path)
         if src.needs_pass and not src.authenticate(password or ""):
             raise PasswordRequired(path)
-        self._begin("inserisci PDF")
+        self._begin(tr("inserisci PDF"))
         self.doc.insert_pdf(src, start_at=after + 1)
         n = src.page_count
         src.close()
@@ -1523,9 +1738,9 @@ def _pdf_forms_api(cls):
         page = self.doc[pno]
         w = _find_widget(page, xref)
         if w is None:
-            raise PdfError("campo non trovato")
+            raise PdfError(tr("campo non trovato"))
         if (w.field_flags or 0) & 1:
-            raise PdfError("campo di sola lettura")
+            raise PdfError(tr("campo di sola lettura"))
         kind = _KIND.get(w.field_type)
         on = None
         if kind in ("checkbox", "radio") and value:
@@ -1534,12 +1749,12 @@ def _pdf_forms_api(cls):
             except Exception:
                 on = None
             if not on:
-                raise PdfError("campo non valido: stato «attivo» non definito nel modulo")
+                raise PdfError(tr("campo non valido: stato «attivo» non definito nel modulo"))
         if kind == "text" and w.text_maxlen and len(str(value)) > w.text_maxlen:
-            raise PdfError(f"massimo {w.text_maxlen} caratteri")
+            raise PdfError(tr("massimo {} caratteri").format(w.text_maxlen))
         if kind not in ("checkbox", "radio", "combo", "list", "text"):
-            raise PdfError("questo campo non è compilabile")
-        self._begin("compila campo")
+            raise PdfError(tr("questo campo non è compilabile"))
+        self._begin(tr("compila campo"))
         if kind == "checkbox":
             w.field_value = on if value else "Off"
             w.update()
@@ -1561,17 +1776,17 @@ def _pdf_forms_api(cls):
         elif kind == "text":
             text = str(value)
             if w.text_maxlen and len(text) > w.text_maxlen:
-                raise PdfError(f"massimo {w.text_maxlen} caratteri")
+                raise PdfError(tr("massimo {} caratteri").format(w.text_maxlen))
             w.field_value = text
             w.update()
         else:
-            raise PdfError("questo campo non è compilabile")
+            raise PdfError(tr("questo campo non è compilabile"))
 
     def flatten_forms(self) -> int:
         n = self.count_fields()
         if n == 0:
             return 0
-        self._begin("appiattisci moduli")
+        self._begin(tr("appiattisci moduli"))
         for p in self.doc:                                    # i campi firma vuoti non vanno disegnati («SIGN»): si tolgono
             for w in list(p.widgets() or []):
                 if w.field_type == fitz.PDF_WIDGET_TYPE_SIGNATURE and not getattr(w, "is_signed", False):

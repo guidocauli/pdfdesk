@@ -13,11 +13,12 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 import pymupdf as fitz
+from .i18n import tr
 
-MODES = {"color": "Colore", "gray": "Scala di grigi", "bw": "Bianco e nero"}
-SOURCES = {"flatbed": "Piano di scansione", "adf": "Alimentatore automatico (ADF)"}
+MODES = {"color": tr("Colore"), "gray": tr("Scala di grigi"), "bw": tr("Bianco e nero")}
+SOURCES = {"flatbed": tr("Piano di scansione"), "adf": tr("Alimentatore automatico (ADF)")}
 # formati carta in mm (larghezza, altezza); None = area massima dello scanner
-PAPER = {"max": ("Area massima", None), "a4": ("A4", (210, 297)), "a5": ("A5", (148, 210)),
+PAPER = {"max": (tr("Area massima"), None), "a4": ("A4", (210, 297)), "a5": ("A5", (148, 210)),
          "letter": ("Letter", (216, 279)), "legal": ("Legal", (216, 356)), "a3": ("A3", (297, 420))}
 SANE_MODE = {"color": "Color", "gray": "Gray", "bw": "Lineart"}
 
@@ -115,7 +116,7 @@ def sane_scan(dev: str, prm: ScanParams, folder: str, progress: Optional[Callabl
         # un alimentatore che si svuota termina con errore «out of documents»: se ci sono pagine, è normale
         if not got and r.returncode != 0:
             shutil.rmtree(sub, ignore_errors=True)
-            raise ScanError(r.stderr.decode("utf-8", "replace").strip() or "scansione non riuscita")
+            raise ScanError(r.stderr.decode("utf-8", "replace").strip() or tr("scansione non riuscita"))
         files = []
         for g in got:              # nomi progressivi unici: più scansioni successive non si sovrascrivono
             dst = _next_name(folder)
@@ -194,7 +195,7 @@ def wia_list() -> list[Scanner]:
 def wia_scan(dev: str, prm: ScanParams, folder: str) -> list[str]:
     ps = _powershell()
     if not ps:
-        raise ScanError("PowerShell non disponibile")
+        raise ScanError(tr("PowerShell non disponibile"))
     script = os.path.join(folder, "wia_scan.ps1")
     with open(script, "w", encoding="utf-8-sig") as f:
         f.write(_WIA_SCAN)
@@ -232,7 +233,7 @@ def scan_pages(sc: Scanner, prm: ScanParams, folder: str) -> list[str]:
     try:
         return wia_scan(sc.id, prm, folder) if sc.backend == "wia" else sane_scan(sc.id, prm, folder)
     except subprocess.TimeoutExpired as e:
-        raise ScanError("lo scanner non ha risposto in tempo") from e
+        raise ScanError(tr("lo scanner non ha risposto in tempo")) from e
     except FileNotFoundError as e:
         raise ScanError(str(e)) from e
 
@@ -251,14 +252,14 @@ def images_to_pdf(files: list[str], out_path: str, dpi: int = 300, jpeg_quality:
     """
     from PIL import Image
     if not files:
-        raise ScanError("Nessuna pagina")
+        raise ScanError(tr("Nessuna pagina"))
     out = fitz.open()
     tess = tesseract_path() if ocr_lang else None
     n = len(files)
     try:
         for i, f in enumerate(files):
             if progress and progress(i, n) is False:
-                raise ScanError("Operazione annullata")
+                raise ScanError(tr("Operazione annullata"))
             im = Image.open(f)
             xres = im.info.get("dpi", (dpi, dpi))[0] or dpi
             try:

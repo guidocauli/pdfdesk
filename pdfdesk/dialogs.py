@@ -17,6 +17,7 @@ from . import AUTHOR, CREDITS, VERSION_LINE, __version__, compress, pdfstd, sign
 from . import fonts as fontlib
 from .core import FONT_NAMES, FONTS
 from .icons import app_icon
+from .i18n import tr
 
 
 class QDialog(_QDialog):
@@ -30,7 +31,7 @@ class QDialog(_QDialog):
 
 
 def settings() -> QSettings:
-    return QSettings("GuidoCauli", "PDFDesk")
+    return QSettings(tr("GuidoCauli"), tr("PDFDesk"))
 
 
 def qcolor(c) -> QColor:
@@ -68,7 +69,7 @@ class ColorButton(QPushButton):
         self.setIconSize(QSize(32, 14))
 
     def _pick(self) -> None:
-        c = QColorDialog.getColor(qcolor(self.color) if self.color else QColor(Qt.white), self, "Scegli colore")
+        c = QColorDialog.getColor(qcolor(self.color) if self.color else QColor(Qt.white), self, tr("Scegli colore"))
         if c.isValid():
             self.color = tuple_color(c)
             self._paint()
@@ -102,7 +103,7 @@ class FontCombo(QComboBox):
         for label, code in ch:
             self.addItem(label, code)
         self.insertSeparator(self.count())
-        self.addItem("Aggiungi font…", self.ADD)
+        self.addItem(tr("Aggiungi font…"), self.ADD)
         self.blockSignals(False)
         self.set_code(cur, emit=False)
 
@@ -114,7 +115,7 @@ class FontCombo(QComboBox):
         i = self.findData(self._code)
         if i < 0:                                  # font non presente: lo mostra comunque
             self.blockSignals(True)
-            self.insertItem(0, fontlib.label_for(self._code) + " (non disponibile)", self._code)
+            self.insertItem(0, fontlib.label_for(self._code) + tr(" (non disponibile)"), self._code)
             self.blockSignals(False)
             i = 0
         self.blockSignals(True)
@@ -126,13 +127,13 @@ class FontCombo(QComboBox):
     def _activated(self, i: int) -> None:
         data = self.itemData(i)
         if data == self.ADD:
-            paths, _ = QFileDialog.getOpenFileNames(self, "Aggiungi font", "", "Font (*.ttf *.otf *.TTF *.OTF)")
+            paths, _ = QFileDialog.getOpenFileNames(self, tr("Aggiungi font"), "", tr("Font (*.ttf *.otf *.TTF *.OTF)"))
             added = None
             for p in paths:
                 try:
                     added = fontlib.add_user_font(p)
                 except Exception as ex:
-                    QMessageBox.warning(self, "Font non valido", str(ex))
+                    QMessageBox.warning(self, tr("Font non valido"), str(ex))
             self._n = -1
             self.refill()
             self.set_code(added or self._code, emit=bool(added))
@@ -155,16 +156,16 @@ class PropertiesPanel(QWidget):
         self._lock = False
         self.stroke = ColorButton((0, 0, 0))
         self.fill = ColorButton(None, allow_none=True)
-        self.fill_on = QCheckBox("Riempimento")
+        self.fill_on = QCheckBox(tr("Riempimento"))
         self.width = QDoubleSpinBox(); self.width.setRange(0, 60); self.width.setSingleStep(0.5); self.width.setValue(2)
         self.width.setKeyboardTracking(False)
         self.opacity = QSlider(Qt.Horizontal); self.opacity.setRange(5, 100); self.opacity.setValue(100)
         self.font = FontCombo()
         self.size = QDoubleSpinBox(); self.size.setRange(4, 200); self.size.setValue(12); self.size.setKeyboardTracking(False)
-        tips = ((self.stroke, "Colore del tratto / del testo (è anche il bordo della casella)"),
-                (self.fill, "Colore di riempimento"), (self.fill_on, "Attiva o disattiva il riempimento"),
-                (self.width, "Spessore del tratto in punti"), (self.opacity, "Opacità del tratto (5–100%)"),
-                (self.font, "Carattere del testo (anche TTF/OTF installati o aggiunti)"), (self.size, "Dimensione del testo in punti"))
+        tips = ((self.stroke, tr("Colore del tratto / del testo (è anche il bordo della casella)")),
+                (self.fill, tr("Colore di riempimento")), (self.fill_on, tr("Attiva o disattiva il riempimento")),
+                (self.width, tr("Spessore del tratto in punti")), (self.opacity, tr("Opacità del tratto (5–100%)")),
+                (self.font, tr("Carattere del testo (anche TTF/OTF installati o aggiunti)")), (self.size, tr("Dimensione del testo in punti")))
         for w, t in tips:
             w.setToolTip(t)
         if compact:
@@ -174,21 +175,21 @@ class PropertiesPanel(QWidget):
             h = QBoxLayout(QBoxLayout.LeftToRight, self)
             self._box = h
             h.setContentsMargins(4, 0, 4, 0); h.setSpacing(5)
-            for label, w in ((None, self.stroke), (None, self.fill_on), (None, self.fill), ("Spess.", self.width),
-                             ("Opac.", self.opacity), (None, self.font), ("Dim.", self.size)):
+            for label, w in ((None, self.stroke), (None, self.fill_on), (None, self.fill), (tr("Spess."), self.width),
+                             (tr("Opac."), self.opacity), (None, self.font), (tr("Dim."), self.size)):
                 if label:
                     l = QLabel(label); l.setToolTip(w.toolTip()); h.addWidget(l)
                 h.addWidget(w)
             h.addStretch(0)
         else:
             f = QFormLayout(self)
-            f.addRow("Colore", self.stroke)
+            f.addRow(tr("Colore"), self.stroke)
             fr = QHBoxLayout(); fr.addWidget(self.fill_on); fr.addWidget(self.fill); fr.addStretch()
             f.addRow(fr)
-            f.addRow("Spessore", self.width)
-            f.addRow("Opacità", self.opacity)
-            f.addRow("Carattere", self.font)
-            f.addRow("Dimensione", self.size)
+            f.addRow(tr("Spessore"), self.width)
+            f.addRow(tr("Opacità"), self.opacity)
+            f.addRow(tr("Carattere"), self.font)
+            f.addRow(tr("Dimensione"), self.size)
         self.stroke.changed.connect(lambda c: self._emit(stroke=c))
         self.fill.changed.connect(lambda c: (self.fill_on.setChecked(True), self._emit(fill=c)))
         self.fill_on.toggled.connect(lambda on: self._emit(fill=self.fill.color if on and self.fill.color else (None if not on else (1, 1, 0.8))))
@@ -330,9 +331,9 @@ class ThumbPanel(QListWidget):
     def _menu(self, pos) -> None:
         from PySide6.QtWidgets import QMenu
         m = QMenu(self)
-        for key, label in (("rot_l", "Ruota a sinistra"), ("rot_r", "Ruota a destra"), ("dup", "Duplica"),
-                           ("blank", "Inserisci pagina vuota dopo"), ("insert", "Inserisci pagine da PDF dopo…"),
-                           ("extract", "Estrai in un nuovo PDF…"), ("delete", "Elimina")):
+        for key, label in (("rot_l", tr("Ruota a sinistra")), ("rot_r", tr("Ruota a destra")), ("dup", tr("Duplica")),
+                           ("blank", tr("Inserisci pagina vuota dopo")), ("insert", tr("Inserisci pagine da PDF dopo…")),
+                           ("extract", tr("Estrai in un nuovo PDF…")), ("delete", "Elimina")):
             m.addAction(label).setData(key)
         a = m.exec(self.mapToGlobal(pos))
         if a:
@@ -353,9 +354,9 @@ class TextDialog(QDialog):
         self.font = FontCombo(); self.font.set_code(fontname)
         self.size = QDoubleSpinBox(); self.size.setRange(4, 200); self.size.setValue(fontsize)
         self.color = ColorButton(color)
-        self.fill_on = QCheckBox("Sfondo"); self.fill_on.setChecked(bool(fill))
+        self.fill_on = QCheckBox(tr("Sfondo")); self.fill_on.setChecked(bool(fill))
         self.fill = ColorButton(fill or (1, 1, 0.8), allow_none=False)
-        for w in (QLabel("Carattere"), self.font, QLabel("Dim."), self.size, QLabel("Colore"), self.color, self.fill_on, self.fill):
+        for w in (QLabel(tr("Carattere")), self.font, QLabel(tr("Dim.")), self.size, QLabel(tr("Colore")), self.color, self.fill_on, self.fill):
             row.addWidget(w)
         row.addStretch()
         lay.addLayout(row)
@@ -377,7 +378,7 @@ class TextDialog(QDialog):
 class FieldTextDialog(QDialog):
     def __init__(self, parent, name: str, value: str, multiline: bool, maxlen: int = 0, password: bool = False) -> None:
         super().__init__(parent)
-        self.setWindowTitle(f"Campo «{name}»" if name else "Campo")
+        self.setWindowTitle(tr("Campo «{}»").format(name) if name else tr("Campo"))
         self.resize(420, 220 if multiline else 120)
         lay = QVBoxLayout(self)
         self.multi = multiline
@@ -391,7 +392,7 @@ class FieldTextDialog(QDialog):
                 self.edit.setEchoMode(QLineEdit.Password)
         lay.addWidget(self.edit)
         if maxlen:
-            lay.addWidget(QLabel(f"Massimo {maxlen} caratteri"))
+            lay.addWidget(QLabel(tr("Massimo {} caratteri").format(maxlen)))
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         bb.accepted.connect(self.accept); bb.rejected.connect(self.reject)
         lay.addWidget(bb)
@@ -460,20 +461,20 @@ class SignatureCanvas(QWidget):
 class DrawSignatureDialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Disegna la tua firma")
+        self.setWindowTitle(tr("Disegna la tua firma"))
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel("Firma qui con il mouse, la penna o il dito:"))
+        lay.addWidget(QLabel(tr("Firma qui con il mouse, la penna o il dito:")))
         self.canvas = SignatureCanvas()
         lay.addWidget(self.canvas)
         row = QHBoxLayout()
-        row.addWidget(QLabel("Spessore"))
+        row.addWidget(QLabel(tr("Spessore")))
         sl = QSlider(Qt.Horizontal); sl.setRange(1, 10); sl.setValue(3)
         sl.valueChanged.connect(lambda v: (setattr(self.canvas, "width", float(v)), self.canvas.update()))
         row.addWidget(sl)
         self.col = ColorButton((10 / 255, 20 / 255, 120 / 255))
         self.col.changed.connect(lambda c: (setattr(self.canvas, "color", qcolor(c)), self.canvas.update()))
-        row.addWidget(QLabel("Colore")); row.addWidget(self.col)
-        clr = QPushButton("Cancella"); clr.clicked.connect(self.canvas.clear); row.addWidget(clr)
+        row.addWidget(QLabel(tr("Colore"))); row.addWidget(self.col)
+        clr = QPushButton(tr("Cancella")); clr.clicked.connect(self.canvas.clear); row.addWidget(clr)
         lay.addLayout(row)
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         bb.accepted.connect(self._ok); bb.rejected.connect(self.reject)
@@ -481,7 +482,7 @@ class DrawSignatureDialog(QDialog):
 
     def _ok(self) -> None:
         if self.canvas.image() is None:
-            QMessageBox.information(self, "Firma", "Disegna prima la firma.")
+            QMessageBox.information(self, tr("Firma"), tr("Disegna prima la firma."))
             return
         self.accept()
 
@@ -494,11 +495,11 @@ class SignatureLibraryDialog(QDialog):
 
     def __init__(self, parent=None, select_mode: bool = True) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Firme olografiche (immagine)")
+        self.setWindowTitle(tr("Firme olografiche (immagine)"))
         self.resize(560, 400)
         self.chosen: Optional[str] = None
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel("Scegli una firma da inserire nel documento oppure creane una nuova."))
+        lay.addWidget(QLabel(tr("Scegli una firma da inserire nel documento oppure creane una nuova.")))
         self.list = QListWidget()
         self.list.setViewMode(QListWidget.IconMode)
         self.list.setIconSize(QSize(200, 80))
@@ -507,13 +508,13 @@ class SignatureLibraryDialog(QDialog):
         self.list.itemDoubleClicked.connect(lambda _: self._use())
         lay.addWidget(self.list, 1)
         row = QHBoxLayout()
-        for text, fn in (("Disegna nuova…", self._draw), ("Da immagine…", self._import), ("Elimina", self._delete)):
+        for text, fn in ((tr("Disegna nuova…"), self._draw), (tr("Da immagine…"), self._import), ("Elimina", self._delete)):
             b = QPushButton(text); b.clicked.connect(fn); row.addWidget(b)
         row.addStretch()
         lay.addLayout(row)
         bb = QDialogButtonBox(QDialogButtonBox.Cancel)
         if select_mode:
-            ok = bb.addButton("Usa questa firma", QDialogButtonBox.AcceptRole)
+            ok = bb.addButton(tr("Usa questa firma"), QDialogButtonBox.AcceptRole)
             ok.clicked.connect(self._use)
         else:
             bb.setStandardButtons(QDialogButtonBox.Close)
@@ -541,14 +542,14 @@ class SignatureLibraryDialog(QDialog):
             self._fill()
 
     def _import(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Immagine della firma", "", "Immagini (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp)")
+        path, _ = QFileDialog.getOpenFileName(self, tr("Immagine della firma"), "", tr("Immagini (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp)"))
         if not path:
             return
         img = QImage(path)
         if img.isNull():
-            QMessageBox.warning(self, "Firma", "Impossibile leggere l'immagine.")
+            QMessageBox.warning(self, tr("Firma"), tr("Impossibile leggere l'immagine."))
             return
-        if QMessageBox.question(self, "Sfondo", "Rendere trasparente lo sfondo chiaro (consigliato per firme su carta bianca)?",
+        if QMessageBox.question(self, tr("Sfondo"), tr("Rendere trasparente lo sfondo chiaro (consigliato per firme su carta bianca)?"),
                                 QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
             img = sigstore.remove_background(img)
         else:
@@ -558,14 +559,14 @@ class SignatureLibraryDialog(QDialog):
 
     def _delete(self) -> None:
         it = self.list.currentItem()
-        if it and QMessageBox.question(self, "Elimina", "Eliminare la firma selezionata?") == QMessageBox.Yes:
+        if it and QMessageBox.question(self, tr("Elimina"), tr("Eliminare la firma selezionata?")) == QMessageBox.Yes:
             sigstore.delete_signature(it.data(Qt.UserRole))
             self._fill()
 
     def _use(self) -> None:
         it = self.list.currentItem()
         if not it:
-            QMessageBox.information(self, "Firma", "Crea o seleziona una firma.")
+            QMessageBox.information(self, tr("Firma"), tr("Crea o seleziona una firma."))
             return
         self.chosen = it.data(Qt.UserRole)
         self.accept()
@@ -576,7 +577,7 @@ class SaveDialog(QDialog):
     def __init__(self, parent, default_path: str, signed: bool, orig_size: int = 0, standard: Optional[str] = None, raw=None) -> None:
         super().__init__(parent)
         from PySide6.QtWidgets import QTabWidget
-        self.setWindowTitle("Salva con nome / Ottimizza")
+        self.setWindowTitle(tr("Salva con nome / Ottimizza"))
         self.resize(620, 560)
         self.signed = signed
         self._raw = raw                      # callable → bytes del documento attuale (per analisi e stima)
@@ -584,8 +585,8 @@ class SaveDialog(QDialog):
         lay = QVBoxLayout(self)
         prow = QHBoxLayout()
         self.path = QLineEdit(default_path)
-        b = QPushButton("Sfoglia…"); b.clicked.connect(self._browse)
-        prow.addWidget(QLabel("File di destinazione")); prow.addWidget(self.path, 1); prow.addWidget(b)
+        b = QPushButton(tr("Sfoglia…")); b.clicked.connect(self._browse)
+        prow.addWidget(QLabel(tr("File di destinazione"))); prow.addWidget(self.path, 1); prow.addWidget(b)
         lay.addLayout(prow)
         tabs = QTabWidget(); lay.addWidget(tabs, 1)
 
@@ -596,88 +597,88 @@ class SaveDialog(QDialog):
         for p in compress.PRESETS_UI:
             self.preset.addItem(p.label, p.key)
         self.preset.currentIndexChanged.connect(self._update)
-        f.addRow("Qualità / compressione", self.preset)
+        f.addRow(tr("Qualità / compressione"), self.preset)
         v1.addLayout(f)
         self.desc = QLabel(); self.desc.setWordWrap(True); self.desc.setStyleSheet("color: gray")
         v1.addWidget(self.desc)
-        self.gray = QCheckBox("Immagini in scala di grigi")
-        self.meta = QCheckBox("Rimuovi metadati (autore, titolo, XMP)")
-        self.fonts = QCheckBox("Riduci i font incorporati ai soli caratteri usati")
+        self.gray = QCheckBox(tr("Immagini in scala di grigi"))
+        self.meta = QCheckBox(tr("Rimuovi metadati (autore, titolo, XMP)"))
+        self.fonts = QCheckBox(tr("Riduci i font incorporati ai soli caratteri usati"))
         for c in (self.gray, self.meta, self.fonts):
             v1.addWidget(c)
         self.std = StandardPicker(self, StandardDialog._key_for(standard))
         self.std.changed.connect(self._update)
         v1.addWidget(self.std)
-        self.std_note = QLabel("PDF/A e PDF/X impongono parametri obbligatori (immagini, colori, font, metadati): la compressione "
-                               "è decisa dalla conversione e le opzioni di questa finestra sono disattivate.")
+        self.std_note = QLabel(tr("PDF/A e PDF/X impongono parametri obbligatori (immagini, colori, font, metadati): la compressione "
+                               "è decisa dalla conversione e le opzioni di questa finestra sono disattivate."))
         self.std_note.setWordWrap(True); self.std_note.setStyleSheet("color: #8a6d00")
         v1.addWidget(self.std_note)
-        note = QLabel("Il testo resta sempre testo selezionabile e ricercabile: la compressione agisce solo sulle immagini e sulla struttura del file.")
+        note = QLabel(tr("Il testo resta sempre testo selezionabile e ricercabile: la compressione agisce solo sulle immagini e sulla struttura del file."))
         note.setWordWrap(True)
         v1.addWidget(note)
-        self.warn = QLabel("⚠ Questo PDF contiene firme digitali. Ricomprimerlo riscrive il file e le firme esistenti diventeranno NON valide. "
-                           "Per mantenerle valide scegli «Originale»; per comprimere e firmare usa Firma → Firma digitale (comprime prima, poi firma).")
+        self.warn = QLabel(tr("⚠ Questo PDF contiene firme digitali. Ricomprimerlo riscrive il file e le firme esistenti diventeranno NON valide. "
+                           "Per mantenerle valide scegli «Originale»; per comprimere e firmare usa Firma → Firma digitale (comprime prima, poi firma)."))
         self.warn.setWordWrap(True); self.warn.setStyleSheet("color: #b00020")
-        self.ack = QCheckBox("Ho capito: invalida le firme esistenti")
+        self.ack = QCheckBox(tr("Ho capito: invalida le firme esistenti"))
         v1.addWidget(self.warn); v1.addWidget(self.ack)
         v1.addStretch()
-        tabs.addTab(t1, "Qualità")
+        tabs.addTab(t1, tr("Qualità"))
 
         # ---- scheda «Avanzate»
         t2 = QWidget(); v2 = QVBoxLayout(t2)
-        self.g_img = QGroupBox("Immagini")
+        self.g_img = QGroupBox(tr("Immagini"))
         fi = QFormLayout(self.g_img)
-        self.resample = QCheckBox("Ricampiona le immagini troppo grandi")
-        self.thr = QSpinBox(); self.thr.setRange(36, 1200); self.thr.setSuffix(" dpi"); self.thr.setToolTip("Si ricampionano solo le immagini sopra questa risoluzione")
-        self.target = QSpinBox(); self.target.setRange(36, 600); self.target.setSuffix(" dpi"); self.target.setToolTip("Risoluzione di arrivo")
-        self.quality = QSpinBox(); self.quality.setRange(1, 100); self.quality.setToolTip("Qualità JPEG: 100 = massima, 1 = minima")
-        self.k_color = QCheckBox("a colori"); self.k_gray = QCheckBox("in grigio"); self.k_bw = QCheckBox("bianco e nero (1 bit)")
+        self.resample = QCheckBox(tr("Ricampiona le immagini troppo grandi"))
+        self.thr = QSpinBox(); self.thr.setRange(36, 1200); self.thr.setSuffix(tr(" dpi")); self.thr.setToolTip(tr("Si ricampionano solo le immagini sopra questa risoluzione"))
+        self.target = QSpinBox(); self.target.setRange(36, 600); self.target.setSuffix(tr(" dpi")); self.target.setToolTip(tr("Risoluzione di arrivo"))
+        self.quality = QSpinBox(); self.quality.setRange(1, 100); self.quality.setToolTip(tr("Qualità JPEG: 100 = massima, 1 = minima"))
+        self.k_color = QCheckBox(tr("a colori")); self.k_gray = QCheckBox(tr("in grigio")); self.k_bw = QCheckBox(tr("bianco e nero (1 bit)"))
         kr = QHBoxLayout()
         for c in (self.k_color, self.k_gray, self.k_bw):
             c.setChecked(True); kr.addWidget(c)
-        self.lossy = QCheckBox("Ricomprimi con perdita (JPEG)"); self.lossy.setChecked(True)
-        self.lossless = QCheckBox("Ricomprimi senza perdita (Flate)"); self.lossless.setChecked(True)
+        self.lossy = QCheckBox(tr("Ricomprimi con perdita (JPEG)")); self.lossy.setChecked(True)
+        self.lossless = QCheckBox(tr("Ricomprimi senza perdita (Flate)")); self.lossless.setChecked(True)
         fi.addRow(self.resample)
-        fi.addRow("Solo se sopra", self.thr)
-        fi.addRow("Risoluzione di arrivo", self.target)
-        fi.addRow("Qualità JPEG", self.quality)
-        fi.addRow("Tipi di immagine", kr)
+        fi.addRow(tr("Solo se sopra"), self.thr)
+        fi.addRow(tr("Risoluzione di arrivo"), self.target)
+        fi.addRow(tr("Qualità JPEG"), self.quality)
+        fi.addRow(tr("Tipi di immagine"), kr)
         fi.addRow(self.lossy); fi.addRow(self.lossless)
         v2.addWidget(self.g_img)
-        self.g_str = QGroupBox("Struttura e pulizia")
+        self.g_str = QGroupBox(tr("Struttura e pulizia"))
         fs = QFormLayout(self.g_str)
         self.garbage = QComboBox()
-        for lab, val in (("Automatico", None), ("Nessuna", 0), ("Base: oggetti inutilizzati", 1), ("Media: + oggetti compattati", 2),
-                         ("Completa: + oggetti duplicati", 4)):
+        for lab, val in ((tr("Automatico"), None), (tr("Nessuna"), 0), (tr("Base: oggetti inutilizzati"), 1), (tr("Media: + oggetti compattati"), 2),
+                         (tr("Completa: + oggetti duplicati"), 4)):
             self.garbage.addItem(lab, val)
-        self.clean = QCheckBox("Normalizza i flussi di contenuto delle pagine")
+        self.clean = QCheckBox(tr("Normalizza i flussi di contenuto delle pagine"))
         self.objstm = QComboBox()
-        for lab, val in (("Automatico", None), ("Sì (file più piccolo; richiede PDF 1.5+)", True), ("No (massima compatibilità)", False)):
+        for lab, val in ((tr("Automatico"), None), (tr("Sì (file più piccolo; richiede PDF 1.5+)"), True), (tr("No (massima compatibilità)"), False)):
             self.objstm.addItem(lab, val)
-        self.thumbs = QCheckBox("Elimina le miniature incorporate")
-        self.attach = QCheckBox("Elimina gli allegati incorporati")
-        self.js = QCheckBox("Elimina JavaScript e azioni automatiche")
-        self.lin = QCheckBox("Ottimizza per la visualizzazione web (linearizza)")
-        fs.addRow("Pulizia degli oggetti", self.garbage)
-        fs.addRow("Flussi di oggetti", self.objstm)
+        self.thumbs = QCheckBox(tr("Elimina le miniature incorporate"))
+        self.attach = QCheckBox(tr("Elimina gli allegati incorporati"))
+        self.js = QCheckBox(tr("Elimina JavaScript e azioni automatiche"))
+        self.lin = QCheckBox(tr("Ottimizza per la visualizzazione web (linearizza)"))
+        fs.addRow(tr("Pulizia degli oggetti"), self.garbage)
+        fs.addRow(tr("Flussi di oggetti"), self.objstm)
         for c in (self.clean, self.thumbs, self.attach, self.js, self.lin):
             fs.addRow(c)
         v2.addWidget(self.g_str)
         v2.addStretch()
-        tabs.addTab(t2, "Avanzate")
+        tabs.addTab(t2, tr("Avanzate"))
 
         # ---- scheda «Analisi e stima»
         t3 = QWidget(); v3 = QVBoxLayout(t3)
         row = QHBoxLayout()
-        self.b_an = QPushButton("Analizza il file"); self.b_an.clicked.connect(self._analyze)
-        self.b_est = QPushButton("Stima la dimensione con queste opzioni"); self.b_est.clicked.connect(self._estimate)
+        self.b_an = QPushButton(tr("Analizza il file")); self.b_an.clicked.connect(self._analyze)
+        self.b_est = QPushButton(tr("Stima la dimensione con queste opzioni")); self.b_est.clicked.connect(self._estimate)
         row.addWidget(self.b_an); row.addWidget(self.b_est); row.addStretch()
         v3.addLayout(row)
         self.report = QPlainTextEdit(); self.report.setReadOnly(True)
-        self.report.setPlaceholderText("«Analizza» mostra cosa occupa spazio (immagini, font, contenuto…); «Stima» esegue la compressione "
-                                       "e mostra la dimensione risultante senza salvare nulla.")
+        self.report.setPlaceholderText(tr("«Analizza» mostra cosa occupa spazio (immagini, font, contenuto…); «Stima» esegue la compressione "
+                                       "e mostra la dimensione risultante senza salvare nulla."))
         v3.addWidget(self.report, 1)
-        tabs.addTab(t3, "Analisi e stima")
+        tabs.addTab(t3, tr("Analisi e stima"))
         if raw is None:
             self.b_an.setEnabled(False); self.b_est.setEnabled(False)
 
@@ -690,7 +691,7 @@ class SaveDialog(QDialog):
         self._update()
 
     def _browse(self) -> None:
-        p, _ = QFileDialog.getSaveFileName(self, "Salva PDF", self.path.text(), "PDF (*.pdf)")
+        p, _ = QFileDialog.getSaveFileName(self, tr("Salva PDF"), self.path.text(), tr("PDF (*.pdf)"))
         if p:
             self.path.setText(p if p.lower().endswith(".pdf") else p + ".pdf")
 
@@ -741,7 +742,7 @@ class SaveDialog(QDialog):
         if not self.std.validate():
             return
         if self.signed and self.warn.isVisible() and not self.ack.isChecked():
-            QMessageBox.warning(self, "Firme digitali", "Conferma di voler invalidare le firme esistenti, oppure scegli «Originale» senza altre opzioni.")
+            QMessageBox.warning(self, tr("Firme digitali"), tr("Conferma di voler invalidare le firme esistenti, oppure scegli «Originale» senza altre opzioni."))
             return
         self.accept()
 
@@ -773,9 +774,9 @@ class SaveDialog(QDialog):
         raw = self._raw()
         self._orig = len(raw)
         try:
-            a = self._bg(lambda: compress.analyze(raw), "Analisi in corso…")
+            a = self._bg(lambda: compress.analyze(raw), tr("Analisi in corso…"))
         except Exception as e:
-            self.report.setPlainText(f"Analisi non riuscita: {e}")
+            self.report.setPlainText(tr("Analisi non riuscita: {}").format(e))
             return
         self.report.setPlainText(compress.format_analysis(a))
 
@@ -783,7 +784,7 @@ class SaveDialog(QDialog):
         raw = self._raw()
         o = self.options()
         try:
-            n = len(self._bg(lambda: compress.optimize_bytes(raw, o), "Stima in corso…"))
+            n = len(self._bg(lambda: compress.optimize_bytes(raw, o), tr("Stima in corso…")))
         except Exception as e:
             self.report.appendPlainText(f"Stima non riuscita: {e}")
             return
@@ -801,24 +802,24 @@ class StandardPicker(QWidget):
         super().__init__(parent)
         lay = QFormLayout(self); lay.setContentsMargins(0, 0, 0, 0)
         self.combo = QComboBox()
-        self.combo.addItem("Nessuno (PDF normale)", None)
+        self.combo.addItem(tr("Nessuno (PDF normale)"), None)
         have = pdfstd.gs_available()
         for k, st in pdfstd.STANDARDS.items():
             self.combo.addItem(f"{st.label} — {st.note}", k)
             if not have:
                 self.combo.model().item(self.combo.count() - 1).setEnabled(False)
         icc_row = QHBoxLayout()
-        self.icc = QLineEdit(); self.icc.setPlaceholderText("profilo ICC di stampa (.icc/.icm) — vuoto: CMYK generico di Ghostscript")
-        bb = QPushButton("Sfoglia…"); bb.clicked.connect(self._browse_icc)
+        self.icc = QLineEdit(); self.icc.setPlaceholderText(tr("profilo ICC di stampa (.icc/.icm) — vuoto: CMYK generico di Ghostscript"))
+        bb = QPushButton(tr("Sfoglia…")); bb.clicked.connect(self._browse_icc)
         icc_row.addWidget(self.icc, 1); icc_row.addWidget(bb)
         self.icc_box = QWidget(); il = QHBoxLayout(self.icc_box); il.setContentsMargins(0, 0, 0, 0)
         il.addWidget(self.icc, 1); il.addWidget(bb)
-        lay.addRow("Conformità", self.combo)
-        lay.addRow("Profilo colore", self.icc_box)
+        lay.addRow(tr("Conformità"), self.combo)
+        lay.addRow(tr("Profilo colore"), self.icc_box)
         self.hint = QLabel(); self.hint.setWordWrap(True); self.hint.setStyleSheet("color: gray")
         lay.addRow(self.hint)
         if not have:
-            self.hint.setText("Ghostscript non trovato: la conversione a PDF/A e PDF/X non è disponibile (è incluso nei pacchetti ufficiali).")
+            self.hint.setText(tr("Ghostscript non trovato: la conversione a PDF/A e PDF/X non è disponibile (è incluso nei pacchetti ufficiali)."))
         self.combo.currentIndexChanged.connect(self._upd)
         i = self.combo.findData(current)
         if i >= 0:
@@ -826,7 +827,7 @@ class StandardPicker(QWidget):
         self._upd()
 
     def _browse_icc(self) -> None:
-        p, _ = QFileDialog.getOpenFileName(self, "Profilo colore ICC", self.icc.text(), "Profili ICC (*.icc *.icm);;Tutti i file (*)")
+        p, _ = QFileDialog.getOpenFileName(self, tr("Profilo colore ICC"), self.icc.text(), tr("Profili ICC (*.icc *.icm);;Tutti i file (*)"))
         if p:
             self.icc.setText(p)
 
@@ -835,9 +836,9 @@ class StandardPicker(QWidget):
         st = pdfstd.STANDARDS.get(k) if k else None
         self.icc_box.setVisible(bool(st and st.family == "X"))
         if st:
-            extra = ("Il documento viene convertito in RGB con profilo sRGB; annotazioni e moduli sono appiattiti, "
-                     "i font incorporati, le trasparenze portate su sfondo bianco se non ammesse." if st.family == "A" else
-                     "Il documento viene convertito in CMYK; per la stampa vera scegli il profilo del tuo stampatore.")
+            extra = (tr("Il documento viene convertito in RGB con profilo sRGB; annotazioni e moduli sono appiattiti, "
+                     "i font incorporati, le trasparenze portate su sfondo bianco se non ammesse.") if st.family == "A" else
+                     tr("Il documento viene convertito in CMYK; per la stampa vera scegli il profilo del tuo stampatore."))
             self.hint.setText(extra)
         elif pdfstd.gs_available():
             self.hint.setText("")
@@ -852,7 +853,7 @@ class StandardPicker(QWidget):
     def validate(self) -> bool:
         p = self.icc_path()
         if p and not os.path.isfile(p):
-            QMessageBox.warning(self, "Profilo colore", "Il file del profilo ICC non esiste.")
+            QMessageBox.warning(self, tr("Profilo colore"), tr("Il file del profilo ICC non esiste."))
             return False
         return True
 
@@ -861,24 +862,24 @@ class StandardDialog(QDialog):
     """Mostra lo standard dichiarato dal documento e ne verifica la conformità."""
     def __init__(self, parent, data_fn, declared: Optional[str], signed: bool) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Conformità PDF/A e PDF/X")
+        self.setWindowTitle(tr("Conformità PDF/A e PDF/X"))
         self.resize(640, 480)
         self.data_fn = data_fn
         self.convert_requested = False
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel(f"Standard dichiarato dal documento: <b>{declared or 'nessuno'}</b>"))
+        lay.addWidget(QLabel(tr("Standard dichiarato dal documento: <b>{}</b>").format(declared or 'nessuno')))
         self.pick = StandardPicker(self, self._key_for(declared))
         lay.addWidget(self.pick)
         self.out = QPlainTextEdit(); self.out.setReadOnly(True)
         lay.addWidget(self.out, 1)
         v = pdfstd.find_verapdf()
-        lay.addWidget(self._note("Controllo interno" + (" + veraPDF (installato)" if v else "") +
-                                 ". Per PDF/X non esiste un validatore libero incluso: per la stampa professionale ricontrolla con il preflight dello stampatore."))
+        lay.addWidget(self._note(tr("Controllo interno") + (tr(" + veraPDF (installato)") if v else "") +
+                                 tr(". Per PDF/X non esiste un validatore libero incluso: per la stampa professionale ricontrolla con il preflight dello stampatore.")))
         if signed:
-            lay.addWidget(self._note("Il documento è firmato: convertirlo invaliderebbe le firme. Converti prima, firma dopo."))
+            lay.addWidget(self._note(tr("Il documento è firmato: convertirlo invaliderebbe le firme. Converti prima, firma dopo.")))
         row = QHBoxLayout()
-        self.b_check = QPushButton("Verifica"); self.b_check.clicked.connect(self._check)
-        self.b_conv = QPushButton("Converti e salva con nome…"); self.b_conv.clicked.connect(self._convert)
+        self.b_check = QPushButton(tr("Verifica")); self.b_check.clicked.connect(self._check)
+        self.b_conv = QPushButton(tr("Converti e salva con nome…")); self.b_conv.clicked.connect(self._convert)
         self.b_conv.setEnabled(not signed)
         row.addWidget(self.b_check); row.addStretch(); row.addWidget(self.b_conv)
         lay.addLayout(row)
@@ -902,20 +903,20 @@ class StandardDialog(QDialog):
     def _check(self) -> None:
         k = self.pick.key()
         if not k:
-            self.out.setPlainText("Scegli lo standard da verificare.")
+            self.out.setPlainText(tr("Scegli lo standard da verificare."))
             return
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             rep = pdfstd.check(self.data_fn(), k)
             self.out.setPlainText(rep.text())
         except Exception as e:
-            self.out.setPlainText(f"Verifica non riuscita: {e}")
+            self.out.setPlainText(tr("Verifica non riuscita: {}").format(e))
         finally:
             QApplication.restoreOverrideCursor()
 
     def _convert(self) -> None:
         if not self.pick.key():
-            self.out.setPlainText("Scegli lo standard di destinazione.")
+            self.out.setPlainText(tr("Scegli lo standard di destinazione."))
             return
         if self.pick.validate():
             self.convert_requested = True
@@ -929,7 +930,7 @@ class StandardDialog(QDialog):
 class CertDialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Crea certificato di firma autofirmato")
+        self.setWindowTitle(tr("Crea certificato di firma autofirmato"))
         self.resize(480, 300)
         lay = QVBoxLayout(self)
         f = QFormLayout()
@@ -937,14 +938,14 @@ class CertDialog(QDialog):
         self.pw = QLineEdit(); self.pw.setEchoMode(QLineEdit.Password)
         self.pw2 = QLineEdit(); self.pw2.setEchoMode(QLineEdit.Password)
         self.years = QSpinBox(); self.years.setRange(1, 30); self.years.setValue(5)
-        self.path = QLineEdit(); b = QPushButton("Sfoglia…"); b.clicked.connect(self._browse)
+        self.path = QLineEdit(); b = QPushButton(tr("Sfoglia…")); b.clicked.connect(self._browse)
         r = QHBoxLayout(); r.addWidget(self.path, 1); r.addWidget(b)
-        f.addRow("Nome e cognome", self.cn); f.addRow("Organizzazione", self.org); f.addRow("E-mail", self.mail)
-        f.addRow("Password del file", self.pw); f.addRow("Ripeti password", self.pw2); f.addRow("Validità (anni)", self.years)
-        f.addRow("Salva come (.p12)", r)
+        f.addRow(tr("Nome e cognome"), self.cn); f.addRow(tr("Organizzazione"), self.org); f.addRow(tr("E-mail"), self.mail)
+        f.addRow(tr("Password del file"), self.pw); f.addRow(tr("Ripeti password"), self.pw2); f.addRow(tr("Validità (anni)"), self.years)
+        f.addRow(tr("Salva come (.p12)"), r)
         lay.addLayout(f)
-        n = QLabel("Un certificato autofirmato garantisce l'integrità del documento ma i lettori PDF lo segnalano come «non attendibile». "
-                   "Per firme con valore legale (FEA/FEQ/CAdES) serve un certificato di un prestatore qualificato (es. smart card o firma remota).")
+        n = QLabel(tr("Un certificato autofirmato garantisce l'integrità del documento ma i lettori PDF lo segnalano come «non attendibile». "
+                   "Per firme con valore legale (FEA/FEQ/CAdES) serve un certificato di un prestatore qualificato (es. smart card o firma remota)."))
         n.setWordWrap(True); n.setStyleSheet("color: gray")
         lay.addWidget(n)
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -952,22 +953,22 @@ class CertDialog(QDialog):
         lay.addWidget(bb)
 
     def _browse(self) -> None:
-        p, _ = QFileDialog.getSaveFileName(self, "Certificato", self.path.text(), "PKCS#12 (*.p12 *.pfx)")
+        p, _ = QFileDialog.getSaveFileName(self, tr("Certificato"), self.path.text(), tr("PKCS#12 (*.p12 *.pfx)"))
         if p:
             self.path.setText(p if p.lower().endswith((".p12", ".pfx")) else p + ".p12")
 
     def _ok(self) -> None:
         if not self.cn.text().strip() or not self.path.text().strip():
-            QMessageBox.warning(self, "Certificato", "Nome e percorso sono obbligatori.")
+            QMessageBox.warning(self, tr("Certificato"), tr("Nome e percorso sono obbligatori."))
             return
         if self.pw.text() != self.pw2.text():
-            QMessageBox.warning(self, "Certificato", "Le password non coincidono.")
+            QMessageBox.warning(self, tr("Certificato"), tr("Le password non coincidono."))
             return
         try:
             signing.create_self_signed_p12(self.path.text(), self.pw.text(), self.cn.text().strip(), self.org.text().strip(),
                                            self.mail.text().strip(), self.years.value() * 365)
         except Exception as e:
-            QMessageBox.critical(self, "Certificato", str(e))
+            QMessageBox.critical(self, tr("Certificato"), str(e))
             return
         self.accept()
 
@@ -976,19 +977,19 @@ class CertDialog(QDialog):
 class SignDialog(QDialog):
     def __init__(self, parent, default_out: str, page_count: int, signed: bool, in_field: bool = False, standard: Optional[str] = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Firma digitale (PAdES)")
+        self.setWindowTitle(tr("Firma digitale (PAdES)"))
         self.resize(560, 520)
         s = settings()
         lay = QVBoxLayout(self)
         f = QFormLayout()
-        self.src = QComboBox(); self.src.addItem("Certificato su file (.p12/.pfx)", "file"); self.src.addItem("Smart card / token USB", "card")
-        f.addRow("Firma con", self.src)
-        self.cert = QLineEdit(s.value("sign/cert", "")); cb = QPushButton("Sfoglia…"); cb.clicked.connect(self._browse_cert)
-        nb = QPushButton("Crea…"); nb.setToolTip("Crea un certificato autofirmato"); nb.clicked.connect(self._new_cert)
+        self.src = QComboBox(); self.src.addItem(tr("Certificato su file (.p12/.pfx)"), "file"); self.src.addItem(tr("Smart card / token USB"), "card")
+        f.addRow(tr("Firma con"), self.src)
+        self.cert = QLineEdit(s.value("sign/cert", "")); cb = QPushButton(tr("Sfoglia…")); cb.clicked.connect(self._browse_cert)
+        nb = QPushButton(tr("Crea…")); nb.setToolTip(tr("Crea un certificato autofirmato")); nb.clicked.connect(self._new_cert)
         cr = QHBoxLayout(); cr.addWidget(self.cert, 1); cr.addWidget(cb); cr.addWidget(nb)
         self.pw = QLineEdit(); self.pw.setEchoMode(QLineEdit.Password)
         self.file_box = QWidget(); fl = QFormLayout(self.file_box); fl.setContentsMargins(0, 0, 0, 0)
-        fl.addRow("Certificato", cr); fl.addRow("Password", self.pw)
+        fl.addRow(tr("Certificato"), cr); fl.addRow(tr("Password"), self.pw)
         f.addRow(self.file_box)
         # --- smart card (PKCS#11)
         self.lib = QComboBox(); self.lib.setEditable(True)
@@ -999,31 +1000,31 @@ class SignDialog(QDialog):
             self.lib.setEditText(last)
         elif not self.lib.count():
             self.lib.setEditText("")
-            self.lib.lineEdit().setPlaceholderText("modulo PKCS#11 del produttore (es. opensc-pkcs11.so / bit4ipki.dll)")
-        lb = QPushButton("Sfoglia…"); lb.clicked.connect(self._browse_lib)
-        rb = QPushButton("Rileva"); rb.setToolTip("Legge le schede inserite e i certificati di firma"); rb.clicked.connect(self._detect)
+            self.lib.lineEdit().setPlaceholderText(tr("modulo PKCS#11 del produttore (es. opensc-pkcs11.so / bit4ipki.dll)"))
+        lb = QPushButton(tr("Sfoglia…")); lb.clicked.connect(self._browse_lib)
+        rb = QPushButton(tr("Rileva")); rb.setToolTip(tr("Legge le schede inserite e i certificati di firma")); rb.clicked.connect(self._detect)
         lr = QHBoxLayout(); lr.addWidget(self.lib, 1); lr.addWidget(lb); lr.addWidget(rb)
         self.card_cert = QComboBox(); self.card_cert.setMinimumWidth(280)
         self.pin = QLineEdit(); self.pin.setEchoMode(QLineEdit.Password)
-        self.pinpad = QCheckBox("Digito il PIN sul lettore (pinpad)")
+        self.pinpad = QCheckBox(tr("Digito il PIN sul lettore (pinpad)"))
         self.pinpad.toggled.connect(lambda on: self.pin.setEnabled(not on))
         self.card_box = QWidget(); cl = QFormLayout(self.card_box); cl.setContentsMargins(0, 0, 0, 0)
-        cl.addRow("Modulo PKCS#11", lr); cl.addRow("Certificato", self.card_cert); cl.addRow("PIN", self.pin); cl.addRow(self.pinpad)
+        cl.addRow(tr("Modulo PKCS#11"), lr); cl.addRow(tr("Certificato"), self.card_cert); cl.addRow(tr("PIN"), self.pin); cl.addRow(self.pinpad)
         f.addRow(self.card_box)
         self.src.currentIndexChanged.connect(self._src_changed); self._src_changed()
         self.reason = QLineEdit(s.value("sign/reason", "")); self.loc = QLineEdit(s.value("sign/loc", ""))
-        f.addRow("Motivo", self.reason); f.addRow("Luogo", self.loc)
+        f.addRow(tr("Motivo"), self.reason); f.addRow(tr("Luogo"), self.loc)
         lay.addLayout(f)
-        self.visible = QCheckBox("Firma visibile (riquadro sulla pagina)")
+        self.visible = QCheckBox(tr("Firma visibile (riquadro sulla pagina)"))
         lay.addWidget(self.visible)
         vf = QFormLayout()
         self.page = QSpinBox(); self.page.setRange(1, max(page_count, 1)); self.page.setValue(page_count)
-        self.use_img = QCheckBox("Includi firma olografica (immagine) nel riquadro")
-        self.img_btn = QPushButton("Scegli firma…"); self.img_btn.clicked.connect(self._pick_img)
+        self.use_img = QCheckBox(tr("Includi firma olografica (immagine) nel riquadro"))
+        self.img_btn = QPushButton(tr("Scegli firma…")); self.img_btn.clicked.connect(self._pick_img)
         self.img_path: Optional[str] = None
         self.img_lbl = QLabel("")
-        self.show_text = QCheckBox("Mostra testo (firmatario e data)"); self.show_text.setChecked(True)
-        vf.addRow("Pagina", self.page); vf.addRow(self.use_img, self.img_btn); vf.addRow("", self.img_lbl); vf.addRow(self.show_text)
+        self.show_text = QCheckBox(tr("Mostra testo (firmatario e data)")); self.show_text.setChecked(True)
+        vf.addRow(tr("Pagina"), self.page); vf.addRow(self.use_img, self.img_btn); vf.addRow("", self.img_lbl); vf.addRow(self.show_text)
         self.vbox = QWidget(); self.vbox.setLayout(vf); lay.addWidget(self.vbox)
         self.visible.toggled.connect(self.vbox.setEnabled); self.vbox.setEnabled(False)
         if in_field:                                   # firma in un campo del modulo: il riquadro è quello del campo
@@ -1032,21 +1033,21 @@ class SignDialog(QDialog):
         self.preset = QComboBox()
         for p in compress.PRESETS:
             self.preset.addItem(p.label, p.key)
-        g.addRow("Comprimi prima di firmare", self.preset)
+        g.addRow(tr("Comprimi prima di firmare"), self.preset)
         self.std = StandardPicker(self, StandardDialog._key_for(standard) if not signed else None)
         if signed or in_field:                         # convertire cancellerebbe le firme esistenti / il campo firma stesso
             self.std.setEnabled(False)
         g.addRow(self.std)
-        self.tsa = QLineEdit(s.value("sign/tsa", "")); self.tsa.setPlaceholderText("opzionale: URL server marca temporale (RFC 3161)")
-        g.addRow("Marca temporale", self.tsa)
-        po = QHBoxLayout(); self.out = QLineEdit(default_out); ob = QPushButton("Sfoglia…"); ob.clicked.connect(self._browse_out)
+        self.tsa = QLineEdit(s.value("sign/tsa", "")); self.tsa.setPlaceholderText(tr("opzionale: URL server marca temporale (RFC 3161)"))
+        g.addRow(tr("Marca temporale"), self.tsa)
+        po = QHBoxLayout(); self.out = QLineEdit(default_out); ob = QPushButton(tr("Sfoglia…")); ob.clicked.connect(self._browse_out)
         po.addWidget(self.out, 1); po.addWidget(ob)
-        g.addRow("Salva firmato come", po)
+        g.addRow(tr("Salva firmato come"), po)
         lay.addLayout(g)
         if signed:
             self.preset.setEnabled(False)
-            lay.addWidget(self._note("Il documento è già firmato: verrà aggiunta una firma successiva senza ricomprimere (le firme esistenti restano valide)."))
-        lay.addWidget(self._note("La firma digitale viene applicata per ultima: dopo la firma il file non va più modificato, altrimenti la firma risulta non valida."))
+            lay.addWidget(self._note(tr("Il documento è già firmato: verrà aggiunta una firma successiva senza ricomprimere (le firme esistenti restano valide).")))
+        lay.addWidget(self._note(tr("La firma digitale viene applicata per ultima: dopo la firma il file non va più modificato, altrimenti la firma risulta non valida.")))
         lay.addStretch()
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         bb.accepted.connect(self._ok); bb.rejected.connect(self.reject)
@@ -1061,7 +1062,7 @@ class SignDialog(QDialog):
         self.file_box.setVisible(not card); self.card_box.setVisible(card)
 
     def _browse_lib(self) -> None:
-        p, _ = QFileDialog.getOpenFileName(self, "Modulo PKCS#11", self.lib.currentText(), "Librerie (*.dll *.so *.dylib *.so.*);;Tutti i file (*)")
+        p, _ = QFileDialog.getOpenFileName(self, tr("Modulo PKCS#11"), self.lib.currentText(), tr("Librerie (*.dll *.so *.dylib *.so.*);;Tutti i file (*)"))
         if p:
             self.lib.setEditText(p)
 
@@ -1070,7 +1071,7 @@ class SignDialog(QDialog):
         try:
             toks = signing.list_tokens(self.lib.currentText().strip())
         except signing.SigningError as e:
-            QMessageBox.warning(self, "Smart card", str(e))
+            QMessageBox.warning(self, tr("Smart card"), str(e))
             return
         n = 0
         for t in toks:
@@ -1078,7 +1079,7 @@ class SignDialog(QDialog):
                 self.card_cert.addItem(f"{c.subject}  —  {t.label or 'scheda'}", (t.label, t.serial, c.cert_id))
                 n += 1
         if not n:
-            QMessageBox.information(self, "Smart card", "Nessuna scheda con certificati trovata.\nInserisci la scheda nel lettore e riprova, oppure verifica il modulo PKCS#11.")
+            QMessageBox.information(self, tr("Smart card"), tr("Nessuna scheda con certificati trovata.\nInserisci la scheda nel lettore e riprova, oppure verifica il modulo PKCS#11."))
 
     def card_params(self) -> dict:
         label, serial, cid = self.card_cert.currentData()
@@ -1086,7 +1087,7 @@ class SignDialog(QDialog):
                     pkcs11_cert_id=cid or None, pkcs11_pin=self.pin.text() or None, pkcs11_pinpad=self.pinpad.isChecked())
 
     def _browse_cert(self) -> None:
-        p, _ = QFileDialog.getOpenFileName(self, "Certificato", self.cert.text(), "PKCS#12 (*.p12 *.pfx)")
+        p, _ = QFileDialog.getOpenFileName(self, tr("Certificato"), self.cert.text(), tr("PKCS#12 (*.p12 *.pfx)"))
         if p:
             self.cert.setText(p)
 
@@ -1096,7 +1097,7 @@ class SignDialog(QDialog):
             self.cert.setText(d.path.text()); self.pw.setText(d.pw.text())
 
     def _browse_out(self) -> None:
-        p, _ = QFileDialog.getSaveFileName(self, "Salva PDF firmato", self.out.text(), "PDF (*.pdf)")
+        p, _ = QFileDialog.getSaveFileName(self, tr("Salva PDF firmato"), self.out.text(), tr("PDF (*.pdf)"))
         if p:
             self.out.setText(p if p.lower().endswith(".pdf") else p + ".pdf")
 
@@ -1110,26 +1111,26 @@ class SignDialog(QDialog):
         card = self.src.currentData() == "card"
         if card:
             if self.card_cert.currentIndex() < 0:
-                QMessageBox.warning(self, "Firma", "Premi «Rileva» e scegli il certificato della smart card.")
+                QMessageBox.warning(self, tr("Firma"), tr("Premi «Rileva» e scegli il certificato della smart card."))
                 return
             if not self.pinpad.isChecked() and not self.pin.text():
-                QMessageBox.warning(self, "Firma", "Inserisci il PIN della smart card.")
+                QMessageBox.warning(self, tr("Firma"), tr("Inserisci il PIN della smart card."))
                 return
         elif not os.path.isfile(self.cert.text()):
-            QMessageBox.warning(self, "Firma", "Seleziona un certificato valido.")
+            QMessageBox.warning(self, tr("Firma"), tr("Seleziona un certificato valido."))
             return
         if not self.out.text().strip():
             return
         if self.std.isEnabled() and not self.std.validate():
             return
         if self.visible.isChecked() and self.use_img.isChecked() and not self.img_path:
-            QMessageBox.warning(self, "Firma", "Scegli l'immagine della firma olografica.")
+            QMessageBox.warning(self, tr("Firma"), tr("Scegli l'immagine della firma olografica."))
             return
         if not card:
             try:
                 signing.load_signer(self.cert.text(), self.pw.text())
             except signing.SigningError as e:
-                QMessageBox.warning(self, "Firma", str(e))
+                QMessageBox.warning(self, tr("Firma"), str(e))
                 return
         s = settings(); s.setValue("sign/pkcs11", self.lib.currentText()); s.setValue("sign/cert", self.cert.text()); s.setValue("sign/reason", self.reason.text())
         s.setValue("sign/loc", self.loc.text()); s.setValue("sign/tsa", self.tsa.text())
@@ -1141,23 +1142,23 @@ class VerifyDialog(QDialog):
 
     def __init__(self, parent, statuses: list[signing.SigStatus]) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Verifica firme digitali")
+        self.setWindowTitle(tr("Verifica firme digitali"))
         self.resize(900, 640)
         self.statuses = statuses
         lay = QVBoxLayout(self)
         self.table = None
         self.detail = None
         if not statuses:
-            lay.addWidget(QLabel("Nessuna firma digitale nel documento."))
+            lay.addWidget(QLabel(tr("Nessuna firma digitale nel documento.")))
         else:
             t = QTableWidget(len(statuses), 5)
-            t.setHorizontalHeaderLabels(["Campo", "Firmatario", "Integra", "Attendibile", "Copertura"])
+            t.setHorizontalHeaderLabels([tr("Campo"), tr("Firmatario"), tr("Integra"), tr("Attendibile"), tr("Copertura")])
             t.setEditTriggers(QAbstractItemView.NoEditTriggers)
             t.setSelectionBehavior(QAbstractItemView.SelectRows)
             t.setSelectionMode(QAbstractItemView.SingleSelection)
             t.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
             for r, s in enumerate(statuses):
-                cov = "tutto il file" if s.coverage == "ENTIRE_FILE" else ("modificato dopo la firma" if s.modified_after else s.coverage)
+                cov = tr("tutto il file") if s.coverage == "ENTIRE_FILE" else (tr("modificato dopo la firma") if s.modified_after else s.coverage)
                 vals = [s.field, s.signer, "sì" if s.intact and s.valid else "NO", "sì" if s.trusted else "no", cov]
                 for c, v in enumerate(vals):
                     it = QTableWidgetItem(v)
@@ -1176,14 +1177,14 @@ class VerifyDialog(QDialog):
             t.itemSelectionChanged.connect(self._show)
             t.selectRow(0)
             self._show()
-            n = QLabel("«Integra»: il contenuto firmato non è stato alterato. «Attendibile»: il certificato risale a un'autorità "
-                       "presente nel tuo archivio fiduciario (un certificato autofirmato risulta non attendibile).")
+            n = QLabel(tr("«Integra»: il contenuto firmato non è stato alterato. «Attendibile»: il certificato risale a un'autorità "
+                       "presente nel tuo archivio fiduciario (un certificato autofirmato risulta non attendibile)."))
             n.setWordWrap(True); n.setStyleSheet("color: gray"); lay.addWidget(n)
         bb = QDialogButtonBox(QDialogButtonBox.Close)
         if statuses:
-            b1 = bb.addButton("Copia dettagli", QDialogButtonBox.ActionRole)
+            b1 = bb.addButton(tr("Copia dettagli"), QDialogButtonBox.ActionRole)
             b1.clicked.connect(lambda: QApplication.clipboard().setText(self.detail.toPlainText()))
-            b2 = bb.addButton("Copia tutte", QDialogButtonBox.ActionRole)
+            b2 = bb.addButton(tr("Copia tutte"), QDialogButtonBox.ActionRole)
             b2.clicked.connect(lambda: QApplication.clipboard().setText("\n\n".join(signing.describe_status(s) for s in statuses)))
         bb.rejected.connect(self.reject)
         bb.button(QDialogButtonBox.Close).clicked.connect(self.accept)
@@ -1198,15 +1199,14 @@ class VerifyDialog(QDialog):
 class AboutDialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Informazioni su PDFDesk")
+        self.setWindowTitle(tr("Informazioni su PDFDesk"))
+        self.setMinimumSize(620, 460); self.resize(680, 520)
         lay = QVBoxLayout(self)
         ic = QLabel(); ic.setPixmap(app_icon().pixmap(72, 72)); ic.setAlignment(Qt.AlignCenter)
         lay.addWidget(ic)
-        t = QLabel(f"<h2 align='center'>PDFDesk</h2><p align='center'>{AUTHOR}<br>versione {__version__}</p>"
-                   "<p>Visualizza, annota, redigi, firma e comprimi PDF su Windows, Linux e macOS.</p>"
-                   "<p>Licenza AGPL-3.0-or-later. Componenti: PyMuPDF (AGPL), Qt/PySide6 (LGPL), pyHanko (MIT).</p>")
-        t.setWordWrap(True); t.setTextFormat(Qt.RichText)
-        lay.addWidget(t)
+        t = QLabel(tr("<h2 align='center'>PDFDesk</h2><p align='center'>{}<br>versione {}</p><p>Visualizza, annota, redigi, firma e comprimi PDF su Windows, Linux e macOS.</p><p>Licenza AGPL-3.0-or-later. Componenti: PyMuPDF (AGPL), Qt/PySide6 (LGPL), pyHanko (MIT).</p>").format(AUTHOR, __version__))
+        t.setWordWrap(True); t.setTextFormat(Qt.RichText); t.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        lay.addWidget(t, 1)
         bb = QDialogButtonBox(QDialogButtonBox.Ok); bb.accepted.connect(self.accept); lay.addWidget(bb)
 
 
@@ -1216,45 +1216,45 @@ class PreferencesDialog(QDialog):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Preferenze")
+        self.setWindowTitle(tr("Preferenze"))
         s = settings()
         lay = QVBoxLayout(self)
-        g = QGroupBox("Barre degli strumenti"); f = QFormLayout(g)
-        self.icons = QComboBox(); self.icons.addItems(["Piccole (18 px)", "Medie (22 px)", "Grandi (32 px)"])
+        g = QGroupBox(tr("Barre degli strumenti")); f = QFormLayout(g)
+        self.icons = QComboBox(); self.icons.addItems([tr("Piccole (18 px)"), tr("Medie (22 px)"), tr("Grandi (32 px)")])
         self.icons.setCurrentIndex(int(s.value("ui/iconsize", 1)))
-        self.icons.setToolTip("Dimensione delle icone nelle barre")
-        self.style = QComboBox(); self.style.addItems(["Solo icone", "Icone e testo accanto", "Icone e testo sotto"])
+        self.icons.setToolTip(tr("Dimensione delle icone nelle barre"))
+        self.style = QComboBox(); self.style.addItems([tr("Solo icone"), tr("Icone e testo accanto"), tr("Icone e testo sotto")])
         self.style.setCurrentIndex(int(s.value("ui/btnstyle", 0)))
-        self.style.setToolTip("Mostra anche il nome delle funzioni nelle barre")
-        self.rows = QComboBox(); self.rows.addItems(["Automatica (una riga se c'è spazio)", "Sempre una riga (le barre eccedenti stanno dietro la freccia »)", "Sempre due righe"])
+        self.style.setToolTip(tr("Mostra anche il nome delle funzioni nelle barre"))
+        self.rows = QComboBox(); self.rows.addItems([tr("Automatica (una riga se c'è spazio)"), tr("Sempre una riga (le barre eccedenti stanno dietro la freccia »)"), tr("Sempre due righe")])
         self.rows.setCurrentIndex(int(s.value("ui/rows", 0)))
-        self.rows.setToolTip("Disposizione predefinita delle barre; si possono comunque trascinare con la maniglia a sinistra")
-        self.locked = QCheckBox("Blocca la posizione delle barre")
+        self.rows.setToolTip(tr("Disposizione predefinita delle barre; si possono comunque trascinare con la maniglia a sinistra"))
+        self.locked = QCheckBox(tr("Blocca la posizione delle barre"))
         self.locked.setChecked(str(s.value("ui/locked", "false")).lower() == "true")
-        self.locked.setToolTip("Impedisce di spostare le barre per errore")
-        self.theme = QComboBox(); self.theme.addItems(["Come il sistema", "Chiaro", "Scuro"])
+        self.locked.setToolTip(tr("Impedisce di spostare le barre per errore"))
+        self.theme = QComboBox(); self.theme.addItems([tr("Come il sistema"), tr("Chiaro"), tr("Scuro")])
         self.theme.setCurrentIndex(int(s.value("ui/theme", 0)))
-        self.theme.setToolTip("Tema dell'interfaccia: «Come il sistema» segue il tema chiaro/scuro del sistema operativo")
-        self.menus = QComboBox(); self.menus.addItems(["Automatico (integrati su Wayland)", "Integrati nella finestra", "Standard di Qt"])
+        self.theme.setToolTip(tr("Tema dell'interfaccia: «Come il sistema» segue il tema chiaro/scuro del sistema operativo"))
+        self.menus = QComboBox(); self.menus.addItems([tr("Automatico (integrati su Wayland)"), tr("Integrati nella finestra"), tr("Standard di Qt")])
         self.menus.setCurrentIndex(int(s.value("ui/inmenus", 0)))
-        self.menus.setToolTip("Aspetto dei menu a tendina: «integrati» li disegna dentro la finestra, sempre attaccati alla barra dei menu")
-        f.addRow("Menu a tendina", self.menus); f.addRow("Tema", self.theme); f.addRow("Icone", self.icons); f.addRow("Pulsanti", self.style); f.addRow("Disposizione", self.rows)
+        self.menus.setToolTip(tr("Aspetto dei menu a tendina: «integrati» li disegna dentro la finestra, sempre attaccati alla barra dei menu"))
+        f.addRow(tr("Menu a tendina"), self.menus); f.addRow(tr("Tema"), self.theme); f.addRow(tr("Icone"), self.icons); f.addRow(tr("Pulsanti"), self.style); f.addRow(tr("Disposizione"), self.rows)
         f.addRow(self.locked)
         lay.addWidget(g)
-        g2 = QGroupBox("Visualizzazione"); f2 = QFormLayout(g2)
-        self.zoom = QComboBox(); self.zoom.addItems(["Adatta alla larghezza", "Adatta alla pagina", "Dimensione reale (100%)", "Mantieni lo zoom attuale"])
+        g2 = QGroupBox(tr("Visualizzazione")); f2 = QFormLayout(g2)
+        self.zoom = QComboBox(); self.zoom.addItems([tr("Adatta alla larghezza"), tr("Adatta alla pagina"), tr("Dimensione reale (100%)"), tr("Mantieni lo zoom attuale")])
         self.zoom.setCurrentIndex(int(s.value("view/initzoom", 0)))
-        self.zoom.setToolTip("Ingrandimento applicato all'apertura di un documento")
-        self.thumbs = QCheckBox("Mostra il pannello delle miniature all'avvio")
+        self.zoom.setToolTip(tr("Ingrandimento applicato all'apertura di un documento"))
+        self.thumbs = QCheckBox(tr("Mostra il pannello delle miniature all'avvio"))
         self.thumbs.setChecked(str(s.value("view/thumbs", "true")).lower() == "true")
-        self.fields = QCheckBox("Evidenzia i campi dei moduli")
+        self.fields = QCheckBox(tr("Evidenzia i campi dei moduli"))
         self.fields.setChecked(str(s.value("view/fields", "true")).lower() == "true")
-        f2.addRow("Ingrandimento iniziale", self.zoom); f2.addRow(self.thumbs); f2.addRow(self.fields)
+        f2.addRow(tr("Ingrandimento iniziale"), self.zoom); f2.addRow(self.thumbs); f2.addRow(self.fields)
         lay.addWidget(g2)
-        g4 = QGroupBox("Griglia"); f4 = QFormLayout(g4)
-        self.grid_snap = QCheckBox("Aggancia gli oggetti agli incroci della griglia quando li sposti o ridimensioni")
+        g4 = QGroupBox(tr("Griglia")); f4 = QFormLayout(g4)
+        self.grid_snap = QCheckBox(tr("Aggancia gli oggetti agli incroci della griglia quando li sposti o ridimensioni"))
         self.grid_snap.setChecked(str(s.value("grid/snap", "false")).lower() == "true")
-        self.grid_show = QCheckBox("Mostra la griglia sulle pagine")
+        self.grid_show = QCheckBox(tr("Mostra la griglia sulle pagine"))
         self.grid_show.setChecked(str(s.value("grid/show", "false")).lower() == "true")
         self.grid_unit = QComboBox()
         for u, t in (("mm", "millimetri"), ("cm", "centimetri"), ("pt", "punti"), ("in", "pollici")):
@@ -1267,22 +1267,37 @@ class PreferencesDialog(QDialog):
                 sp.setValue(float(s.value(k, 5.0)))
             except (TypeError, ValueError):
                 sp.setValue(5.0)
-        self.grid_x.setToolTip("Distanza tra le linee verticali"); self.grid_y.setToolTip("Distanza tra le linee orizzontali")
-        row = QHBoxLayout(); row.addWidget(self.grid_x); row.addWidget(QLabel("×")); row.addWidget(self.grid_y); row.addWidget(self.grid_unit)
-        f4.addRow(self.grid_snap); f4.addRow(self.grid_show); f4.addRow("Passo (orizzontale × verticale)", row)
+        self.grid_x.setToolTip(tr("Distanza tra le linee verticali")); self.grid_y.setToolTip(tr("Distanza tra le linee orizzontali"))
+        row = QHBoxLayout(); row.addWidget(self.grid_x); row.addWidget(QLabel(tr("×"))); row.addWidget(self.grid_y); row.addWidget(self.grid_unit)
+        f4.addRow(self.grid_snap); f4.addRow(self.grid_show); f4.addRow(tr("Passo (orizzontale × verticale)"), row)
         lay.addWidget(g4)
-        g5 = QGroupBox("Selezione del testo"); f5 = QFormLayout(g5)
+        g5 = QGroupBox(tr("Selezione del testo")); f5 = QFormLayout(g5)
         self.textsel = QComboBox()
-        self.textsel.addItem("A righe (come in un lettore PDF): dal punto iniziale al finale", "flow")
-        self.textsel.addItem("Ad area (rettangolo)", "area")
+        self.textsel.addItem(tr("A righe (come in un lettore PDF): dal punto iniziale al finale"), "flow")
+        self.textsel.addItem(tr("Ad area (rettangolo)"), "area")
         self.textsel.setCurrentIndex(max(0, self.textsel.findData(str(s.value("view/textsel", "flow")))))
-        self.textsel.setToolTip("Vale per copia testo, evidenzia, sottolinea e barra. Tenendo premuto Alt durante il trascinamento si usa l'altra modalità.")
-        f5.addRow("Modalità", self.textsel)
+        self.textsel.setToolTip(tr("Vale per copia testo, evidenzia, sottolinea e barra. Tenendo premuto Alt durante il trascinamento si usa l'altra modalità."))
+        f5.addRow(tr("Modalità"), self.textsel)
         lay.addWidget(g5)
-        g3 = QGroupBox("Generale"); f3 = QFormLayout(g3)
+        g7 = QGroupBox(tr("Lingua")); f7 = QFormLayout(g7)
+        self.lang = QComboBox()
+        from .i18n import LANGUAGES, language
+        for code, name in LANGUAGES:
+            self.lang.addItem(name, code)
+        self.lang.setCurrentIndex(max(0, self.lang.findData(language())))
+        self.lang.setToolTip(tr("Lingua dell'interfaccia (si applica al riavvio del programma)"))
+        f7.addRow(tr("Lingua dell'interfaccia"), self.lang)
+        lay.addWidget(g7)
+        g6 = QGroupBox(tr("Carattere dell'interfaccia")); f6 = QFormLayout(g6)
+        self.fontpct = QSpinBox(); self.fontpct.setRange(70, 200); self.fontpct.setSingleStep(5); self.fontpct.setSuffix(" %")
+        self.fontpct.setValue(int(s.value("ui/fontpct", 100)))
+        self.fontpct.setToolTip(tr("Ingrandisce o rimpicciolisce il testo di menu, barre, pannelli e finestre (100 % = dimensione di sistema)"))
+        f6.addRow(tr("Dimensione"), self.fontpct)
+        lay.addWidget(g6)
+        g3 = QGroupBox(tr("Generale")); f3 = QFormLayout(g3)
         self.recent = QSpinBox(); self.recent.setRange(0, 30); self.recent.setValue(int(s.value("recent_max", 10)))
-        self.recent.setToolTip("Quanti file mostrare in File → Apri recenti (0 = nessuno)")
-        f3.addRow("File recenti", self.recent)
+        self.recent.setToolTip(tr("Quanti file mostrare in File → Apri recenti (0 = nessuno)"))
+        f3.addRow(tr("File recenti"), self.recent)
         lay.addWidget(g3)
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel | QDialogButtonBox.RestoreDefaults)
         bb.accepted.connect(self.accept); bb.rejected.connect(self.reject)
@@ -1292,7 +1307,7 @@ class PreferencesDialog(QDialog):
     def _defaults(self) -> None:
         self.theme.setCurrentIndex(0); self.menus.setCurrentIndex(0); self.icons.setCurrentIndex(1); self.style.setCurrentIndex(0); self.rows.setCurrentIndex(0); self.locked.setChecked(False)
         self.zoom.setCurrentIndex(0); self.thumbs.setChecked(True); self.fields.setChecked(True); self.recent.setValue(10)
-        self.grid_snap.setChecked(False); self.grid_show.setChecked(False); self.grid_unit.setCurrentIndex(0); self.grid_x.setValue(5.0); self.grid_y.setValue(5.0); self.textsel.setCurrentIndex(0)
+        self.grid_snap.setChecked(False); self.grid_show.setChecked(False); self.grid_unit.setCurrentIndex(0); self.grid_x.setValue(5.0); self.grid_y.setValue(5.0); self.textsel.setCurrentIndex(0); self.fontpct.setValue(100); self.lang.setCurrentIndex(0)
 
     def store(self) -> None:
         s = settings()
@@ -1301,7 +1316,7 @@ class PreferencesDialog(QDialog):
         s.setValue("view/initzoom", self.zoom.currentIndex()); s.setValue("view/thumbs", self.thumbs.isChecked())
         s.setValue("view/fields", self.fields.isChecked()); s.setValue("recent_max", self.recent.value())
         s.setValue("grid/snap", self.grid_snap.isChecked()); s.setValue("grid/show", self.grid_show.isChecked())
-        s.setValue("view/textsel", self.textsel.currentData()); s.setValue("grid/unit", self.grid_unit.currentData()); s.setValue("grid/x", self.grid_x.value()); s.setValue("grid/y", self.grid_y.value())
+        s.setValue("view/textsel", self.textsel.currentData()); s.setValue("ui/fontpct", self.fontpct.value()); s.setValue("ui/lang", self.lang.currentData()); s.setValue("grid/unit", self.grid_unit.currentData()); s.setValue("grid/x", self.grid_x.value()); s.setValue("grid/y", self.grid_y.value())
 
 
 
@@ -1310,7 +1325,7 @@ class ExportDialog(QDialog):
     def __init__(self, parent, page_count: int, current_page: int, fmt: str = "png") -> None:
         super().__init__(parent)
         from .export import FORMATS
-        self.setWindowTitle("Esporta")
+        self.setWindowTitle(tr("Esporta"))
         self.page_count = page_count
         self.current = current_page
         lay = QVBoxLayout(self)
@@ -1319,24 +1334,24 @@ class ExportDialog(QDialog):
         for k, (label, _) in FORMATS.items():
             self.fmt.addItem(label, k)
         self.fmt.setCurrentIndex(max(0, self.fmt.findData(fmt)))
-        f.addRow("Formato", self.fmt)
+        f.addRow(tr("Formato"), self.fmt)
         self.pages = QComboBox()
-        self.pages.addItems(["Tutte le pagine", "Pagina corrente", "Intervallo…"])
-        self.range = QLineEdit(); self.range.setPlaceholderText(f"es. 1-3, 5, 8-   (il documento ha {page_count} pagine)")
-        f.addRow("Pagine", self.pages)
-        f.addRow("Intervallo", self.range)
-        self.dpi = QSpinBox(); self.dpi.setRange(36, 1200); self.dpi.setValue(150); self.dpi.setSuffix(" dpi")
-        self.dpi.setToolTip("Risoluzione delle immagini")
+        self.pages.addItems([tr("Tutte le pagine"), tr("Pagina corrente"), tr("Intervallo…")])
+        self.range = QLineEdit(); self.range.setPlaceholderText(tr("es. 1-3, 5, 8-   (il documento ha {} pagine)").format(page_count))
+        f.addRow(tr("Pagine"), self.pages)
+        f.addRow(tr("Intervallo"), self.range)
+        self.dpi = QSpinBox(); self.dpi.setRange(36, 1200); self.dpi.setValue(150); self.dpi.setSuffix(tr(" dpi"))
+        self.dpi.setToolTip(tr("Risoluzione delle immagini"))
         self.quality = QSpinBox(); self.quality.setRange(1, 100); self.quality.setValue(85)
-        self.quality.setToolTip("Qualità JPEG (100 = massima)")
-        self.multi = QCheckBox("Un solo file TIFF multipagina"); self.multi.setChecked(True)
+        self.quality.setToolTip(tr("Qualità JPEG (100 = massima)"))
+        self.multi = QCheckBox(tr("Un solo file TIFF multipagina")); self.multi.setChecked(True)
         self.comp = QComboBox()
-        for label, key in (("LZW (senza perdita)", "tiff_lzw"), ("Nessuna", "raw"), ("Deflate (senza perdita)", "tiff_adobe_deflate"),
+        for label, key in ((tr("LZW (senza perdita)"), "tiff_lzw"), (tr("Nessuna"), "raw"), (tr("Deflate (senza perdita)"), "tiff_adobe_deflate"),
                            ("JPEG", "jpeg")):
             self.comp.addItem(label, key)
-        f.addRow("Risoluzione", self.dpi)
-        f.addRow("Qualità JPG", self.quality)
-        f.addRow("Compressione TIFF", self.comp)
+        f.addRow(tr("Risoluzione"), self.dpi)
+        f.addRow(tr("Qualità JPG"), self.quality)
+        f.addRow(tr("Compressione TIFF"), self.comp)
         f.addRow("", self.multi)
         self.note = QLabel(); self.note.setWordWrap(True)
         lay.addLayout(f)
@@ -1359,18 +1374,18 @@ class ExportDialog(QDialog):
                 lab.setVisible(show)
         self.range.setEnabled(self.pages.currentIndex() == 2)
         self._form.labelForField(self.range).setEnabled(self.range.isEnabled())
-        self.note.setText({"docx": "La struttura (titoli, paragrafi, tabelle, immagini, interruzioni di pagina) viene ricostruita dal contenuto del PDF; "
-                                   "l'impaginazione esatta può differire.",
-                           "odt": "La struttura (titoli, paragrafi, tabelle, immagini, interruzioni di pagina) viene ricostruita dal contenuto del PDF; "
-                                  "l'impaginazione esatta può differire.",
-                           "txt": "Solo il testo, in ordine di lettura. I PDF scansionati senza testo producono un file vuoto."}.get(k, ""))
+        self.note.setText({"docx": tr("La struttura (titoli, paragrafi, tabelle, immagini, interruzioni di pagina) viene ricostruita dal contenuto del PDF; "
+                                   "l'impaginazione esatta può differire."),
+                           "odt": tr("La struttura (titoli, paragrafi, tabelle, immagini, interruzioni di pagina) viene ricostruita dal contenuto del PDF; "
+                                  "l'impaginazione esatta può differire."),
+                           "txt": tr("Solo il testo, in ordine di lettura. I PDF scansionati senza testo producono un file vuoto.")}.get(k, ""))
         self.adjustSize()
 
     def _ok(self) -> None:
         try:
             self.page_list()
         except ValueError as e:
-            QMessageBox.warning(self, "Pagine", str(e))
+            QMessageBox.warning(self, tr("Pagine"), str(e))
             return
         self.accept()
 
@@ -1390,14 +1405,14 @@ class ExportDialog(QDialog):
 
 class MetadataDialog(QDialog):
     """Visualizza, modifica e aggiunge i metadati del documento (Info standard, chiavi personalizzate, XMP)."""
-    LABELS = {"title": "Titolo", "author": "Autore", "subject": "Oggetto", "keywords": "Parole chiave", "creator": "Applicazione creatrice",
-              "producer": "Produttore PDF", "creationDate": "Data di creazione", "modDate": "Data di modifica"}
+    LABELS = {"title": tr("Titolo"), "author": tr("Autore"), "subject": tr("Oggetto"), "keywords": tr("Parole chiave"), "creator": tr("Applicazione creatrice"),
+              "producer": tr("Produttore PDF"), "creationDate": tr("Data di creazione"), "modDate": tr("Data di modifica")}
 
     def __init__(self, parent, meta: dict, info: list, standard: Optional[str] = None) -> None:
         super().__init__(parent)
         from .core import pdf_date_to_display
         from PySide6.QtWidgets import QTabWidget
-        self.setWindowTitle("Metadati del documento")
+        self.setWindowTitle(tr("Metadati del documento"))
         self.resize(640, 520)
         self._meta = meta
         lay = QVBoxLayout(self)
@@ -1408,56 +1423,55 @@ class MetadataDialog(QDialog):
         for k, label in self.LABELS.items():
             e = QLineEdit(pdf_date_to_display(meta["standard"].get(k, "")) if k.endswith("Date") else meta["standard"].get(k, ""))
             if k.endswith("Date"):
-                e.setPlaceholderText("AAAA-MM-GG hh:mm:ss +hh:mm  (vuoto = nessuna)")
+                e.setPlaceholderText(tr("AAAA-MM-GG hh:mm:ss +hh:mm  (vuoto = nessuna)"))
                 row = QHBoxLayout(); row.addWidget(e, 1)
-                b = QPushButton("Adesso"); b.setToolTip("Imposta data e ora attuali")
+                b = QPushButton(tr("Adesso")); b.setToolTip(tr("Imposta data e ora attuali"))
                 b.clicked.connect(lambda _=False, ed=e: ed.setText(self._now()))
                 row.addWidget(b); f.addRow(label, row)
             else:
                 f.addRow(label, e)
-            e.setToolTip({"title": "Titolo mostrato nella barra del visualizzatore", "keywords": "Parole separate da virgole"}.get(k, label))
+            e.setToolTip({"title": tr("Titolo mostrato nella barra del visualizzatore"), "keywords": tr("Parole separate da virgole")}.get(k, label))
             self.fields[k] = e
-        tabs.addTab(w, "Campi standard")
+        tabs.addTab(w, tr("Campi standard"))
         # --- personalizzati
         w = QWidget(); v = QVBoxLayout(w)
-        v.addWidget(QLabel("Campi aggiuntivi (chiave → valore) memorizzati nel dizionario Info del PDF."))
-        self.table = QTableWidget(0, 2); self.table.setHorizontalHeaderLabels(["Chiave", "Valore"])
+        v.addWidget(QLabel(tr("Campi aggiuntivi (chiave → valore) memorizzati nel dizionario Info del PDF.")))
+        self.table = QTableWidget(0, 2); self.table.setHorizontalHeaderLabels([tr("Chiave"), tr("Valore")])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         for k, val in meta["custom"].items():
             self._add_row(k, val)
         v.addWidget(self.table, 1)
         row = QHBoxLayout()
-        ba = QPushButton("Aggiungi campo"); ba.clicked.connect(lambda: (self._add_row("", ""), self.table.editItem(self.table.item(self.table.rowCount() - 1, 0))))
-        br = QPushButton("Rimuovi campo"); br.clicked.connect(self._remove_row)
+        ba = QPushButton(tr("Aggiungi campo")); ba.clicked.connect(lambda: (self._add_row("", ""), self.table.editItem(self.table.item(self.table.rowCount() - 1, 0))))
+        br = QPushButton(tr("Rimuovi campo")); br.clicked.connect(self._remove_row)
         row.addWidget(ba); row.addWidget(br); row.addStretch(); v.addLayout(row)
-        tabs.addTab(w, "Campi personalizzati")
+        tabs.addTab(w, tr("Campi personalizzati"))
         # --- XMP
         w = QWidget(); v = QVBoxLayout(w)
-        self.xmp = QPlainTextEdit(meta["xmp"] or "(nessun blocco XMP)"); self.xmp.setReadOnly(True)
+        self.xmp = QPlainTextEdit(meta["xmp"] or tr("(nessun blocco XMP)")); self.xmp.setReadOnly(True)
         self.xmp.setLineWrapMode(QPlainTextEdit.NoWrap)
         v.addWidget(self.xmp, 1)
-        self.regen = QCheckBox("Rigenera l'XMP dai campi standard (titolo, autore, oggetto, parole chiave, date)")
-        self.rm_xmp = QCheckBox("Rimuovi il blocco XMP")
+        self.regen = QCheckBox(tr("Rigenera l'XMP dai campi standard (titolo, autore, oggetto, parole chiave, date)"))
+        self.rm_xmp = QCheckBox(tr("Rimuovi il blocco XMP"))
         self.rm_xmp.toggled.connect(lambda on: self.regen.setEnabled(not on and not standard))
         v.addWidget(self.regen); v.addWidget(self.rm_xmp)
         if standard:
             self.regen.setEnabled(False)
-            v.addWidget(QLabel(f"Il documento dichiara {standard}: i suoi metadati XMP sono obbligatori e non vengono rigenerati qui. "
-                               "Modificando i campi standard, XMP e Info possono diventare incoerenti: salvando, PDFDesk propone di ripristinare la conformità."))
+            v.addWidget(QLabel(tr("Il documento dichiara {}: i suoi metadati XMP sono obbligatori e non vengono rigenerati qui. Modificando i campi standard, XMP e Info possono diventare incoerenti: salvando, PDFDesk propone di ripristinare la conformità.").format(standard)))
             self.rm_xmp.setEnabled(False)
             v.itemAt(v.count() - 1).widget().setWordWrap(True)
         elif not meta["xmp"]:
             self.rm_xmp.setEnabled(False)
-        tabs.addTab(w, "XMP")
+        tabs.addTab(w, tr("XMP"))
         # --- informazioni
-        t = QTableWidget(len(info), 2); t.setHorizontalHeaderLabels(["Proprietà", "Valore"]); t.verticalHeader().hide()
+        t = QTableWidget(len(info), 2); t.setHorizontalHeaderLabels([tr("Proprietà"), tr("Valore")]); t.verticalHeader().hide()
         t.setEditTriggers(QAbstractItemView.NoEditTriggers)
         t.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         t.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         for i, (a, b) in enumerate(info):
             t.setItem(i, 0, QTableWidgetItem(a)); t.setItem(i, 1, QTableWidgetItem(b))
-        tabs.addTab(t, "Informazioni")
+        tabs.addTab(t, tr("Informazioni"))
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         bb.accepted.connect(self._ok); bb.rejected.connect(self.reject)
         lay.addWidget(bb)
@@ -1482,7 +1496,7 @@ class MetadataDialog(QDialog):
         try:
             self.values = self._collect(display_to_pdf_date)
         except ValueError as e:
-            QMessageBox.warning(self, "Metadati", str(e))
+            QMessageBox.warning(self, tr("Metadati"), str(e))
             return
         self.accept()
 
@@ -1491,19 +1505,132 @@ class MetadataDialog(QDialog):
         for k, e in self.fields.items():
             std[k] = conv(e.text()) if k.endswith("Date") else e.text().strip()
         custom = {}
-        reserved = {"Title", "Author", "Subject", "Keywords", "Creator", "Producer", "CreationDate", "ModDate", "Trapped"}
+        reserved = {tr("Title"), tr("Author"), tr("Subject"), tr("Keywords"), tr("Creator"), tr("Producer"), tr("CreationDate"), tr("ModDate"), tr("Trapped")}
         for r in range(self.table.rowCount()):
             k = (self.table.item(r, 0).text() if self.table.item(r, 0) else "").strip().replace(" ", "_")
             v = self.table.item(r, 1).text() if self.table.item(r, 1) else ""
             if not k:
                 continue
             if k in reserved:
-                raise ValueError(f"«{k}» è un campo standard: modificalo nella prima scheda.")
+                raise ValueError(tr("«{}» è un campo standard: modificalo nella prima scheda.").format(k))
             if k in custom:
-                raise ValueError(f"Chiave duplicata: «{k}».")
+                raise ValueError(tr("Chiave duplicata: «{}».").format(k))
             custom[k] = v
         return {"standard": std, "custom": custom, "regen_xmp": self.regen.isChecked() and self.regen.isEnabled(),
                 "remove_xmp": self.rm_xmp.isChecked()}
+
+
+class ImageDialog(QDialog):
+    """Dimensioni numeriche (varie unità di misura), blocco proporzioni, rotazione, sostituzione ed esportazione di un'immagine."""
+    UNITS = [(tr("pt (punti)"), 1.0), ("mm", 72 / 25.4), ("cm", 72 / 2.54), ("pollici", 72.0), (tr("px a 96 dpi"), 0.75)]
+
+    def __init__(self, parent, w_pt: float, h_pt: float, px: tuple, on_export=None, title: str = tr("Proprietà immagine")) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.w_pt, self.h_pt = float(w_pt), float(h_pt)
+        self.ratio = self.w_pt / self.h_pt if self.h_pt else 1.0
+        self.px = px
+        self.replacement: Optional[bytes] = None
+        self.on_export = on_export
+        self._busy = False
+        s = settings()
+        lay = QVBoxLayout(self)
+        form = QFormLayout()
+        self.unit = QComboBox()
+        for t, _f in self.UNITS:
+            self.unit.addItem(t)
+        self.unit.setCurrentIndex(int(s.value("img/unit", 1)))
+        self.wsp, self.hsp = QDoubleSpinBox(), QDoubleSpinBox()
+        for sp in (self.wsp, self.hsp):
+            sp.setDecimals(3); sp.setRange(0.01, 100000.0); sp.setKeyboardTracking(False)
+        self.lock = QCheckBox(tr("Mantieni le proporzioni")); self.lock.setChecked(True)
+        self.angle = QDoubleSpinBox(); self.angle.setRange(-360, 360); self.angle.setDecimals(1); self.angle.setSuffix(" °")
+        self.angle.setToolTip(tr("Rotazione oraria applicata all'immagine (si ricalcola l'ingombro mantenendo il centro)"))
+        rl = QPushButton("↺ 90°"); rr = QPushButton("↻ 90°")
+        rl.clicked.connect(lambda: self.angle.setValue(self._wrap(self.angle.value() - 90)))
+        rr.clicked.connect(lambda: self.angle.setValue(self._wrap(self.angle.value() + 90)))
+        arow = QHBoxLayout(); arow.addWidget(self.angle); arow.addWidget(rl); arow.addWidget(rr)
+        form.addRow(tr("Unità di misura"), self.unit)
+        form.addRow(tr("Larghezza"), self.wsp); form.addRow(tr("Altezza"), self.hsp)
+        form.addRow("", self.lock)
+        form.addRow(tr("Ruota di"), arow)
+        lay.addLayout(form)
+        self.info = QLabel(); self.info.setStyleSheet("color: gray"); lay.addWidget(self.info)
+        br = QHBoxLayout()
+        self.b_rep = QPushButton(tr("Sostituisci immagine…")); self.b_exp = QPushButton(tr("Esporta immagine…"))
+        self.b_rep.clicked.connect(self._replace); self.b_exp.clicked.connect(self._export)
+        br.addWidget(self.b_rep); br.addWidget(self.b_exp); lay.addLayout(br)
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.accepted.connect(self.accept); bb.rejected.connect(self.reject); lay.addWidget(bb)
+        self.unit.currentIndexChanged.connect(self._unit_changed)
+        self.wsp.valueChanged.connect(lambda v: self._edited("w"))
+        self.hsp.valueChanged.connect(lambda v: self._edited("h"))
+        self._show_values()
+
+    @staticmethod
+    def _wrap(a: float) -> float:
+        return (a + 180) % 360 - 180 if abs(a) > 180 else a
+
+    def factor(self) -> float:
+        return self.UNITS[self.unit.currentIndex()][1]
+
+    def _show_values(self) -> None:
+        self._busy = True
+        f = self.factor()
+        self.wsp.setValue(self.w_pt / f); self.hsp.setValue(self.h_pt / f)
+        self._busy = False
+        dpi = self.px[0] / (self.w_pt / 72) if self.w_pt else 0
+        self.info.setText(tr("Immagine originale: {} × {} px — risoluzione attuale circa {:.0f} dpi").format(self.px[0], self.px[1], dpi))
+
+    def _unit_changed(self) -> None:
+        settings().setValue("img/unit", self.unit.currentIndex())
+        self._show_values()
+
+    def _edited(self, which: str) -> None:
+        if self._busy:
+            return
+        f = self.factor()
+        self._busy = True
+        if which == "w":
+            self.w_pt = self.wsp.value() * f
+            if self.lock.isChecked():
+                self.h_pt = self.w_pt / self.ratio; self.hsp.setValue(self.h_pt / f)
+        else:
+            self.h_pt = self.hsp.value() * f
+            if self.lock.isChecked():
+                self.w_pt = self.h_pt * self.ratio; self.wsp.setValue(self.w_pt / f)
+        self._busy = False
+        if not self.lock.isChecked() and self.h_pt:
+            self.ratio = self.w_pt / self.h_pt          # proporzioni sbloccate: sono quelle impostate a mano
+
+    def _replace(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, tr("Scegli l'immagine sostitutiva"), str(settings().value("lastimgdir", "")),
+                                              tr("Immagini (*.png *.jpg *.jpeg *.bmp *.gif *.tif *.tiff *.webp)"))
+        if not path:
+            return
+        try:
+            from . import imgutil
+            data = imgutil.to_png_bytes(path)
+            img = QImage.fromData(data)
+        except Exception as e:
+            QMessageBox.warning(self, tr("Immagine"), tr("Impossibile leggere l'immagine:\n{}").format(e))
+            return
+        settings().setValue("lastimgdir", os.path.dirname(path))
+        self.replacement = data
+        self.px = (img.width(), img.height())
+        if self.lock.isChecked() and img.height():                     # le proporzioni seguono la nuova immagine
+            self.ratio = img.width() / img.height()
+            self.h_pt = self.w_pt / self.ratio
+        self._show_values()
+        self.b_rep.setText(tr("Sostituisci immagine… (scelta: ") + os.path.basename(path) + ")")
+
+    def _export(self) -> None:
+        if self.on_export:
+            self.on_export()
+
+    def values(self) -> tuple:
+        """(larghezza pt, altezza pt, angolo, immagine sostitutiva o None)"""
+        return self.w_pt, self.h_pt, self.angle.value(), self.replacement
 
 
 class ImageOutDialog(QDialog):
@@ -1514,27 +1641,27 @@ class ImageOutDialog(QDialog):
         s = settings()
         f = QFormLayout()
         self.fmt = QComboBox()
-        for k, (label, _) in (("png", ("PNG (senza perdita, trasparenza)", "")), ("jpg", ("JPG (compatto, con perdita)", "")),
-                              ("tiff", ("TIFF (senza perdita, stampa/archivio)", ""))):
+        for k, (label, _) in (("png", (tr("PNG (senza perdita, trasparenza)"), "")), ("jpg", (tr("JPG (compatto, con perdita)"), "")),
+                              ("tiff", (tr("TIFF (senza perdita, stampa/archivio)"), ""))):
             self.fmt.addItem(label, k)
         self.fmt.setCurrentIndex(max(0, self.fmt.findData(str(s.value("extract/fmt", "png")))))
-        f.addRow("Formato", self.fmt)
-        self.dpi = QSpinBox(); self.dpi.setRange(36, 1200); self.dpi.setSuffix(" dpi"); self.dpi.setValue(int(s.value("extract/dpi", 200)))
-        self.dpi.setToolTip("Risoluzione con cui l'area viene resa")
+        f.addRow(tr("Formato"), self.fmt)
+        self.dpi = QSpinBox(); self.dpi.setRange(36, 1200); self.dpi.setSuffix(tr(" dpi")); self.dpi.setValue(int(s.value("extract/dpi", 200)))
+        self.dpi.setToolTip(tr("Risoluzione con cui l'area viene resa"))
         if with_dpi:
-            f.addRow("Risoluzione", self.dpi)
+            f.addRow(tr("Risoluzione"), self.dpi)
         self.quality = QSpinBox(); self.quality.setRange(1, 100); self.quality.setValue(int(s.value("extract/quality", 90)))
-        f.addRow("Qualità JPG", self.quality)
-        self.annots = QCheckBox("Includi annotazioni e campi"); self.annots.setChecked(True)
+        f.addRow(tr("Qualità JPG"), self.quality)
+        self.annots = QCheckBox(tr("Includi annotazioni e campi")); self.annots.setChecked(True)
         if with_annots:
             f.addRow("", self.annots)
         lay = QVBoxLayout(self); lay.addLayout(f)
         self.copy_requested = False
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        bb.button(QDialogButtonBox.Ok).setText("Salva con nome…")
+        bb.button(QDialogButtonBox.Ok).setText(tr("Salva con nome…"))
         bb.accepted.connect(self._ok); bb.rejected.connect(self.reject)
         if copy_button:
-            b = bb.addButton("Copia negli appunti", QDialogButtonBox.ActionRole)
+            b = bb.addButton(tr("Copia negli appunti"), QDialogButtonBox.ActionRole)
             b.clicked.connect(lambda: (setattr(self, "copy_requested", True), self._ok()))
         lay.addWidget(bb)
         self.fmt.currentIndexChanged.connect(self._sync); self._sync()
@@ -1554,33 +1681,33 @@ class ExtractImagesDialog(QDialog):
     def __init__(self, parent, doc, items: list, current_page: int = 0) -> None:
         super().__init__(parent)
         from . import extract
-        self.setWindowTitle("Estrai immagini")
+        self.setWindowTitle(tr("Estrai immagini"))
         self.resize(640, 520)
         self.items = items
         self._doc = doc
         lay = QVBoxLayout(self)
         top = QHBoxLayout()
-        self.scope = QComboBox(); self.scope.addItems(["Tutte le pagine", f"Solo la pagina {current_page + 1}"])
+        self.scope = QComboBox(); self.scope.addItems([tr("Tutte le pagine"), tr("Solo la pagina {}").format(current_page + 1)])
         self.scope.currentIndexChanged.connect(self._fill)
-        top.addWidget(QLabel("Mostra")); top.addWidget(self.scope)
-        ba = QPushButton("Seleziona tutte"); ba.clicked.connect(lambda: self._all(True))
-        bn = QPushButton("Nessuna"); bn.clicked.connect(lambda: self._all(False))
+        top.addWidget(QLabel(tr("Mostra"))); top.addWidget(self.scope)
+        ba = QPushButton(tr("Seleziona tutte")); ba.clicked.connect(lambda: self._all(True))
+        bn = QPushButton(tr("Nessuna")); bn.clicked.connect(lambda: self._all(False))
         top.addStretch(); top.addWidget(ba); top.addWidget(bn)
         lay.addLayout(top)
         self.list = QListWidget(); self.list.setIconSize(QSize(64, 64)); lay.addWidget(self.list, 1)
         self.current = current_page
         f = QFormLayout()
         self.fmt = QComboBox()
-        for k, label in (("png", "PNG (senza perdita, trasparenza)"), ("jpg", "JPG (compatto, con perdita)"), ("tiff", "TIFF (senza perdita)")):
+        for k, label in (("png", tr("PNG (senza perdita, trasparenza)")), ("jpg", tr("JPG (compatto, con perdita)")), ("tiff", tr("TIFF (senza perdita)"))):
             self.fmt.addItem(label, k)
         s = settings()
         self.fmt.setCurrentIndex(max(0, self.fmt.findData(str(s.value("extract/fmt", "png")))))
         self.quality = QSpinBox(); self.quality.setRange(1, 100); self.quality.setValue(int(s.value("extract/quality", 90)))
-        f.addRow("Formato", self.fmt); f.addRow("Qualità JPG", self.quality)
+        f.addRow(tr("Formato"), self.fmt); f.addRow(tr("Qualità JPG"), self.quality)
         lay.addLayout(f)
         self.count = QLabel(); lay.addWidget(self.count)
         self.bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.bb.button(QDialogButtonBox.Ok).setText("Estrai in una cartella…")
+        self.bb.button(QDialogButtonBox.Ok).setText(tr("Estrai in una cartella…"))
         self.bb.accepted.connect(self._ok); self.bb.rejected.connect(self.reject)
         lay.addWidget(self.bb)
         self.list.itemChanged.connect(self._count)
@@ -1598,7 +1725,7 @@ class ExtractImagesDialog(QDialog):
             txt = f"Pagina {it['page'] + 1} — {it['w']}×{it['h']} px"
             if it["dpi"]:
                 txt += f", ~{it['dpi']} dpi"
-            txt += f"\n{compress.human_size(it['bytes'])} nel file" + (" · con trasparenza" if it["mask"] else "")
+            txt += f"\n{compress.human_size(it['bytes'])} nel file" + (tr(" · con trasparenza") if it["mask"] else "")
             li = QListWidgetItem(txt)
             li.setFlags(li.flags() | Qt.ItemIsUserCheckable); li.setCheckState(Qt.Checked); li.setData(Qt.UserRole, it)
             try:
@@ -1626,7 +1753,7 @@ class ExtractImagesDialog(QDialog):
 
     def _count(self) -> None:
         n = len(self.selected())
-        self.count.setText(f"{n} immagini selezionate su {self.list.count()}" if self.list.count() else "Nessuna immagine incorporata.")
+        self.count.setText(tr("{} immagini selezionate su {}").format(n, self.list.count()) if self.list.count() else tr("Nessuna immagine incorporata."))
         self.bb.button(QDialogButtonBox.Ok).setEnabled(n > 0)
 
     def _ok(self) -> None:
@@ -1651,11 +1778,11 @@ class MergeDialog(QDialog):
         super().__init__(parent)
         from . import merge as mg
         self._mg = mg
-        self.setWindowTitle("Unisci PDF")
+        self.setWindowTitle(tr("Unisci PDF"))
         self.resize(760, 520)
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel("Aggiungi i file e disponili nell'ordine voluto (trascinali o usa Su/Giù). "
-                             "Puoi anche limitare le pagine di ciascun file."))
+        lay.addWidget(QLabel(tr("Aggiungi i file e disponili nell'ordine voluto (trascinali o usa Su/Giù). "
+                             "Puoi anche limitare le pagine di ciascun file.")))
         row = QHBoxLayout()
         self.list = QListWidget()
         self.list.setDragDropMode(QAbstractItemView.InternalMove)
@@ -1664,9 +1791,9 @@ class MergeDialog(QDialog):
         self.list.itemDoubleClicked.connect(lambda _i: self.set_pages())
         row.addWidget(self.list, 1)
         col = QVBoxLayout()
-        for text, fn in (("Aggiungi…", self.add_dialog), ("Rimuovi", self.remove_selected), ("Su", lambda: self.move(-1)),
-                         ("Giù", lambda: self.move(1)), ("Ordina per nome", self.sort_by_name),
-                         ("Pagine…", self.set_pages), ("Inverti ordine", self.reverse)):
+        for text, fn in ((tr("Aggiungi…"), self.add_dialog), (tr("Rimuovi"), self.remove_selected), ("Su", lambda: self.move(-1)),
+                         ("Giù", lambda: self.move(1)), (tr("Ordina per nome"), self.sort_by_name),
+                         (tr("Pagine…"), self.set_pages), (tr("Inverti ordine"), self.reverse)):
             b = QPushButton(text); b.clicked.connect(fn); col.addWidget(b)
         col.addStretch(1)
         row.addLayout(col)
@@ -1675,15 +1802,15 @@ class MergeDialog(QDialog):
         f = QFormLayout()
         orow = QHBoxLayout()
         self.out = QLineEdit(default_out)
-        bb0 = QPushButton("Sfoglia…"); bb0.clicked.connect(self._browse)
+        bb0 = QPushButton(tr("Sfoglia…")); bb0.clicked.connect(self._browse)
         orow.addWidget(self.out, 1); orow.addWidget(bb0)
-        f.addRow("PDF finale", orow)
-        self.bookmarks = QCheckBox("Aggiungi un segnalibro per ogni file sorgente"); self.bookmarks.setChecked(True)
-        self.open_after = QCheckBox("Apri il risultato dopo l'unione"); self.open_after.setChecked(True)
+        f.addRow(tr("PDF finale"), orow)
+        self.bookmarks = QCheckBox(tr("Aggiungi un segnalibro per ogni file sorgente")); self.bookmarks.setChecked(True)
+        self.open_after = QCheckBox(tr("Apri il risultato dopo l'unione")); self.open_after.setChecked(True)
         f.addRow(self.bookmarks); f.addRow(self.open_after)
         lay.addLayout(f)
         self.bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.bb.button(QDialogButtonBox.Ok).setText("Unisci")
+        self.bb.button(QDialogButtonBox.Ok).setText(tr("Unisci"))
         self.bb.accepted.connect(self._ok); self.bb.rejected.connect(self.reject)
         lay.addWidget(self.bb)
         self.list.model().rowsMoved.connect(self._refresh)
@@ -1697,14 +1824,14 @@ class MergeDialog(QDialog):
         try:
             info = self._mg.probe(path)
             while info["locked"]:
-                pw, ok = QInputDialog.getText(self, "PDF protetto", f"Password di {os.path.basename(path)}:", QLineEdit.Password)
+                pw, ok = QInputDialog.getText(self, tr("PDF protetto"), tr("Password di {}:").format(os.path.basename(path)), QLineEdit.Password)
                 if not ok:
                     return False
                 info = self._mg.probe(path, pw)
                 if info["locked"]:
-                    QMessageBox.warning(self, "Password", "Password errata.")
+                    QMessageBox.warning(self, tr("Password"), tr("Password errata."))
         except self._mg.MergeError as e:
-            QMessageBox.warning(self, "Unisci PDF", str(e))
+            QMessageBox.warning(self, tr("Unisci PDF"), str(e))
             return False
         it = QListWidgetItem()
         it.setData(Qt.UserRole, {"path": path, "pages": "", "password": pw, "count": info["pages"]})
@@ -1716,13 +1843,13 @@ class MergeDialog(QDialog):
     def _label(self, it: QListWidgetItem) -> None:
         d = it.data(Qt.UserRole)
         sel = f"  — pagine {d['pages']}" if d["pages"] else ""
-        it.setText(f"{os.path.basename(d['path'])}   ({d['count']} pag.){sel}")
+        it.setText(tr("{}   ({} pag.){}").format(os.path.basename(d['path']), d['count'], sel))
         it.setToolTip(d["path"])
 
     def add_dialog(self) -> None:
         s = settings()
-        ps, _ = QFileDialog.getOpenFileNames(self, "Aggiungi file", s.value("lastdir", ""),
-                                             "PDF e immagini (*.pdf *.png *.jpg *.jpeg *.tif *.tiff *.bmp *.gif *.webp);;PDF (*.pdf);;Tutti i file (*)")
+        ps, _ = QFileDialog.getOpenFileNames(self, tr("Aggiungi file"), s.value("lastdir", ""),
+                                             tr("PDF e immagini (*.pdf *.png *.jpg *.jpeg *.tif *.tiff *.bmp *.gif *.webp);;PDF (*.pdf);;Tutti i file (*)"))
         for p in ps:
             self.add_file(p)
         if ps:
@@ -1767,15 +1894,14 @@ class MergeDialog(QDialog):
             return
         d = it.data(Qt.UserRole)
         if text is None:
-            text, ok = QInputDialog.getText(self, "Pagine da includere", f"{os.path.basename(d['path'])} ha {d['count']} pagine.\n"
-                                            "Intervalli (es. 1-3,5,8-); vuoto = tutte:", QLineEdit.Normal, d["pages"])
+            text, ok = QInputDialog.getText(self, tr("Pagine da includere"), tr("{} ha {} pagine.\nIntervalli (es. 1-3,5,8-); vuoto = tutte:").format(os.path.basename(d['path']), d['count']), QLineEdit.Normal, d["pages"])
             if not ok:
                 return
         from .export import parse_pages
         try:
             parse_pages(text or "", d["count"])
         except ValueError as e:
-            QMessageBox.warning(self, "Pagine", str(e))
+            QMessageBox.warning(self, tr("Pagine"), str(e))
             return
         d["pages"] = (text or "").strip()
         it.setData(Qt.UserRole, d)
@@ -1797,11 +1923,11 @@ class MergeDialog(QDialog):
         return n
 
     def _refresh(self, *_a) -> None:
-        self.summary.setText(f"{self.list.count()} file, {self.total_pages()} pagine nel PDF finale")
+        self.summary.setText(tr("{} file, {} pagine nel PDF finale").format(self.list.count(), self.total_pages()))
         self.bb.button(QDialogButtonBox.Ok).setEnabled(self.list.count() > 0)
 
     def _browse(self) -> None:
-        p, _ = QFileDialog.getSaveFileName(self, "Salva PDF unito", self.out.text(), "PDF (*.pdf)")
+        p, _ = QFileDialog.getSaveFileName(self, tr("Salva PDF unito"), self.out.text(), tr("PDF (*.pdf)"))
         if p:
             self.out.setText(p if p.lower().endswith(".pdf") else p + ".pdf")
 
@@ -1813,9 +1939,9 @@ class MergeDialog(QDialog):
         out = os.path.abspath(self.out.text().strip())
         srcs = {os.path.abspath(d["path"]) for d in self.items()}
         if out in srcs:
-            QMessageBox.warning(self, "Unisci PDF", "Il PDF finale non può coincidere con uno dei file sorgente.")
+            QMessageBox.warning(self, tr("Unisci PDF"), tr("Il PDF finale non può coincidere con uno dei file sorgente."))
             return
-        if os.path.exists(out) and QMessageBox.question(self, "Sovrascrivere?", f"{out}\nesiste già. Sovrascriverlo?") != QMessageBox.Yes:
+        if os.path.exists(out) and QMessageBox.question(self, tr("Sovrascrivere?"), tr("{}\nesiste già. Sovrascriverlo?").format(out)) != QMessageBox.Yes:
             return
         self.out_path = out
         self.accept()
@@ -1845,7 +1971,7 @@ class ScanDialog(QDialog):
         import tempfile
         from . import scan
         self._sc = scan
-        self.setWindowTitle("Crea PDF da scansione")
+        self.setWindowTitle(tr("Crea PDF da scansione"))
         self.resize(860, 640)
         self.folder = tempfile.mkdtemp(prefix="pdfdesk-scan-")
         self._thread = None
@@ -1855,28 +1981,28 @@ class ScanDialog(QDialog):
         g = QFormLayout()
         srow = QHBoxLayout()
         self.dev = QComboBox(); self.dev.setMinimumWidth(320)
-        rb = QPushButton("Cerca scanner"); rb.clicked.connect(self.refresh)
+        rb = QPushButton(tr("Cerca scanner")); rb.clicked.connect(self.refresh)
         srow.addWidget(self.dev, 1); srow.addWidget(rb)
-        g.addRow("Scanner", srow)
+        g.addRow(tr("Scanner"), srow)
         self.hint = QLabel(); self.hint.setWordWrap(True); self.hint.setStyleSheet("color: gray")
         g.addRow(self.hint)
         prow = QHBoxLayout()
         self.source = QComboBox(); [self.source.addItem(v, k) for k, v in scan.SOURCES.items()]
         self.mode = QComboBox(); [self.mode.addItem(v, k) for k, v in scan.MODES.items()]
-        self.dpi = QComboBox(); [self.dpi.addItem(f"{d} dpi", d) for d in (75, 100, 150, 200, 300, 400, 600, 1200)]
+        self.dpi = QComboBox(); [self.dpi.addItem(tr("{} dpi").format(d), d) for d in (75, 100, 150, 200, 300, 400, 600, 1200)]
         self.dpi.setCurrentIndex(self.dpi.findData(300))
         self.paper = QComboBox(); [self.paper.addItem(v[0], k) for k, v in scan.PAPER.items()]
         self.paper.setCurrentIndex(self.paper.findData("a4"))
         for w in (self.source, self.mode, self.dpi, self.paper):
             prow.addWidget(w)
-        g.addRow("Origine / modo / risoluzione / formato", prow)
+        g.addRow(tr("Origine / modo / risoluzione / formato"), prow)
         lay.addLayout(g)
         brow = QHBoxLayout()
-        self.b_scan = QPushButton("Scansiona"); self.b_scan.clicked.connect(self.start_scan)
-        b_imp = QPushButton("Importa immagini…"); b_imp.clicked.connect(self.import_dialog)
-        b_del = QPushButton("Elimina"); b_del.clicked.connect(self.remove_selected)
-        b_rl = QPushButton("⟲ Ruota"); b_rl.clicked.connect(lambda: self.rotate(-90))
-        b_rr = QPushButton("Ruota ⟳"); b_rr.clicked.connect(lambda: self.rotate(90))
+        self.b_scan = QPushButton(tr("Scansiona")); self.b_scan.clicked.connect(self.start_scan)
+        b_imp = QPushButton(tr("Importa immagini…")); b_imp.clicked.connect(self.import_dialog)
+        b_del = QPushButton(tr("Elimina")); b_del.clicked.connect(self.remove_selected)
+        b_rl = QPushButton(tr("⟲ Ruota")); b_rl.clicked.connect(lambda: self.rotate(-90))
+        b_rr = QPushButton(tr("Ruota ⟳")); b_rr.clicked.connect(lambda: self.rotate(90))
         for b in (self.b_scan, b_imp, b_del, b_rl, b_rr):
             brow.addWidget(b)
         brow.addStretch(1)
@@ -1888,22 +2014,22 @@ class ScanDialog(QDialog):
         self.pages.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.pages.setSpacing(8)
         lay.addWidget(self.pages, 1)
-        self.status = QLabel("Nessuna pagina. Scansiona o importa delle immagini."); lay.addWidget(self.status)
+        self.status = QLabel(tr("Nessuna pagina. Scansiona o importa delle immagini.")); lay.addWidget(self.status)
         # --- uscita
         f = QFormLayout()
         orow = QHBoxLayout()
         self.out = QLineEdit(default_out)
-        bo = QPushButton("Sfoglia…"); bo.clicked.connect(self._browse)
+        bo = QPushButton(tr("Sfoglia…")); bo.clicked.connect(self._browse)
         orow.addWidget(self.out, 1); orow.addWidget(bo)
-        f.addRow("PDF da creare", orow)
+        f.addRow(tr("PDF da creare"), orow)
         self.comp = QComboBox()
-        for t, q in (("Senza perdita (PNG, file più grande)", 0), ("JPEG alta qualità (85)", 85), ("JPEG media (70) — file piccolo", 70),
-                     ("JPEG bassa (50) — molto piccolo", 50)):
+        for t, q in ((tr("Senza perdita (PNG, file più grande)"), 0), (tr("JPEG alta qualità (85)"), 85), (tr("JPEG media (70) — file piccolo"), 70),
+                     (tr("JPEG bassa (50) — molto piccolo"), 50)):
             self.comp.addItem(t, q)
         self.comp.setCurrentIndex(1)
-        f.addRow("Compressione delle pagine", self.comp)
+        f.addRow(tr("Compressione delle pagine"), self.comp)
         orow2 = QHBoxLayout()
-        self.ocr = QCheckBox("Rendi il testo ricercabile (OCR)")
+        self.ocr = QCheckBox(tr("Rendi il testo ricercabile (OCR)"))
         self.lang = QComboBox()
         langs = scan.ocr_languages()
         for l in langs:
@@ -1912,15 +2038,15 @@ class ScanDialog(QDialog):
             self.lang.setCurrentIndex(self.lang.findData("ita"))
         self.ocr.setEnabled(bool(langs)); self.lang.setEnabled(bool(langs))
         if not langs:
-            self.ocr.setToolTip("Tesseract non trovato: installalo per attivare l'OCR")
-            self.ocr.setText("Rendi il testo ricercabile (OCR) — richiede Tesseract, non trovato")
+            self.ocr.setToolTip(tr("Tesseract non trovato: installalo per attivare l'OCR"))
+            self.ocr.setText(tr("Rendi il testo ricercabile (OCR) — richiede Tesseract, non trovato"))
         orow2.addWidget(self.ocr); orow2.addWidget(self.lang); orow2.addStretch(1)
         f.addRow(orow2)
-        self.open_after = QCheckBox("Apri il PDF dopo averlo creato"); self.open_after.setChecked(True)
+        self.open_after = QCheckBox(tr("Apri il PDF dopo averlo creato")); self.open_after.setChecked(True)
         f.addRow(self.open_after)
         lay.addLayout(f)
         self.bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.bb.button(QDialogButtonBox.Ok).setText("Crea PDF")
+        self.bb.button(QDialogButtonBox.Ok).setText(tr("Crea PDF"))
         self.bb.accepted.connect(self._create); self.bb.rejected.connect(self.reject)
         lay.addWidget(self.bb)
         self.scanners = []
@@ -1938,12 +2064,12 @@ class ScanDialog(QDialog):
             self.dev.addItem(s.label, s)
         be = self._sc.available_backends()
         if self.scanners:
-            self.hint.setText(f"{len(self.scanners)} scanner trovati.")
+            self.hint.setText(tr("{} scanner trovati.").format(len(self.scanners)))
         elif not be:
-            self.hint.setText("Nessun driver di scansione disponibile. Su Windows serve WIA (incluso in Windows); su Linux e macOS installa "
-                              "SANE (pacchetto «sane-utils» / «sane-backends», comando scanimage). Puoi comunque importare immagini già acquisite.")
+            self.hint.setText(tr("Nessun driver di scansione disponibile. Su Windows serve WIA (incluso in Windows); su Linux e macOS installa "
+                              "SANE (pacchetto «sane-utils» / «sane-backends», comando scanimage). Puoi comunque importare immagini già acquisite."))
         else:
-            self.hint.setText("Nessuno scanner trovato: controlla collegamento e accensione, poi premi «Cerca scanner».")
+            self.hint.setText(tr("Nessuno scanner trovato: controlla collegamento e accensione, poi premi «Cerca scanner»."))
         self._update_enabled()
 
     def _update_enabled(self) -> None:
@@ -1958,7 +2084,7 @@ class ScanDialog(QDialog):
         sc = self.dev.currentData()
         if sc is None:
             return
-        self.status.setText("Scansione in corso…")
+        self.status.setText(tr("Scansione in corso…"))
         QApplication.setOverrideCursor(Qt.BusyCursor)
         self._thread = _ScanThread(sc, self.params(), self.folder)
         self._thread.done.connect(self._scanned)
@@ -1973,8 +2099,8 @@ class ScanDialog(QDialog):
         for f in new:
             self._add_page(f, self.dpi.currentData())
         if err:
-            QMessageBox.warning(self, "Scansione", err)
-        self.status.setText(f"{len(new)} pagine acquisite." if new else "Nessuna pagina acquisita.")
+            QMessageBox.warning(self, tr("Scansione"), err)
+        self.status.setText(tr("{} pagine acquisite.").format(len(new)) if new else tr("Nessuna pagina acquisita."))
         self._update_enabled()
 
     # --- pagine
@@ -1989,15 +2115,15 @@ class ScanDialog(QDialog):
 
     def _renumber(self) -> None:
         for i in range(self.pages.count()):
-            self.pages.item(i).setText(f"Pagina {i + 1}")
-        self.status.setText(f"{self.pages.count()} pagine" if self.pages.count() else "Nessuna pagina.")
+            self.pages.item(i).setText(tr("Pagina {}").format(i + 1))
+        self.status.setText(tr("{} pagine").format(self.pages.count()) if self.pages.count() else tr("Nessuna pagina."))
         self._update_enabled()
 
     def import_dialog(self) -> None:
         import shutil
         s = settings()
-        ps, _ = QFileDialog.getOpenFileNames(self, "Importa immagini", s.value("lastdir", ""),
-                                             "Immagini (*.png *.jpg *.jpeg *.tif *.tiff *.bmp *.gif *.webp)")
+        ps, _ = QFileDialog.getOpenFileNames(self, tr("Importa immagini"), s.value("lastdir", ""),
+                                             tr("Immagini (*.png *.jpg *.jpeg *.tif *.tiff *.bmp *.gif *.webp)"))
         self.import_files(ps)
         if ps:
             s.setValue("lastdir", os.path.dirname(ps[0]))
@@ -2010,7 +2136,7 @@ class ScanDialog(QDialog):
             try:
                 shutil.copy(p, dst)
             except OSError as e:
-                QMessageBox.warning(self, "Importa", f"{p}: {e}")
+                QMessageBox.warning(self, tr("Importa"), f"{p}: {e}")
                 continue
             self._add_page(dst, self.dpi.currentData()); n += 1
         return n
@@ -2030,7 +2156,7 @@ class ScanDialog(QDialog):
                 im.close()
                 r.save(path, **({"dpi": dpi} if dpi else {}))
             except Exception as e:
-                QMessageBox.warning(self, "Ruota", str(e)); continue
+                QMessageBox.warning(self, tr("Ruota"), str(e)); continue
             pm = QPixmap(path)
             it.setIcon(QIcon(pm.scaled(240, 320, Qt.KeepAspectRatio, Qt.SmoothTransformation)))
 
@@ -2038,7 +2164,7 @@ class ScanDialog(QDialog):
         return [self.pages.item(i).data(Qt.UserRole) for i in range(self.pages.count())]
 
     def _browse(self) -> None:
-        p, _ = QFileDialog.getSaveFileName(self, "Salva PDF", self.out.text(), "PDF (*.pdf)")
+        p, _ = QFileDialog.getSaveFileName(self, tr("Salva PDF"), self.out.text(), tr("PDF (*.pdf)"))
         if p:
             self.out.setText(p if p.lower().endswith(".pdf") else p + ".pdf")
 
@@ -2048,9 +2174,9 @@ class ScanDialog(QDialog):
             if not self.out.text().strip():
                 return
         out = os.path.abspath(self.out.text().strip())
-        if os.path.exists(out) and QMessageBox.question(self, "Sovrascrivere?", f"{out}\nesiste già. Sovrascriverlo?") != QMessageBox.Yes:
+        if os.path.exists(out) and QMessageBox.question(self, tr("Sovrascrivere?"), tr("{}\nesiste già. Sovrascriverlo?").format(out)) != QMessageBox.Yes:
             return
-        prog = QProgressDialog("Creazione del PDF…", "Annulla", 0, self.pages.count(), self)
+        prog = QProgressDialog(tr("Creazione del PDF…"), tr("Annulla"), 0, self.pages.count(), self)
         prog.setWindowModality(Qt.WindowModal); prog.setMinimumDuration(300)
 
         def cb(i, n):
@@ -2061,7 +2187,7 @@ class ScanDialog(QDialog):
                                    self.lang.currentData() if self.ocr.isChecked() else "", cb)
         except Exception as e:
             prog.close()
-            QMessageBox.critical(self, "Crea PDF", f"Creazione non riuscita:\n{e}")
+            QMessageBox.critical(self, tr("Crea PDF"), tr("Creazione non riuscita:\n{}").format(e))
             return
         prog.close()
         self.out_path = out

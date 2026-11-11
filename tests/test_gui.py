@@ -568,3 +568,132 @@ class TabsGatingExportTests(unittest.TestCase):
         doc = docx.Document(os.path.join(d, "o.docx")); self.assertTrue(any(p.text.strip() for p in doc.paragraphs))
         txt = open(os.path.join(d, "o.txt"), encoding="utf-8").read()
         self.assertEqual(txt.strip().split()[:3], w.pdf.doc[0].get_text("text", sort=True).split()[:3])
+
+
+class FontScaleTests(unittest.TestCase):
+    def test_font_scale_and_about_size(self):
+        QSettings().clear()
+        w = MainWindow(); w.show(); wait(100)
+        base = QApplication.font().pointSizeF()
+        w._apply_font(150); wait(50)
+        self.assertAlmostEqual(QApplication.font().pointSizeF(), base * 1.5, delta=0.6)
+        self.assertAlmostEqual(w.menuBar().font().pointSizeF(), base * 1.5, delta=0.6)
+        w._apply_font(100); wait(50)
+        self.assertAlmostEqual(QApplication.font().pointSizeF(), base, delta=0.6)
+        d = dialogs.AboutDialog(w); d.show(); wait(50)
+        self.assertGreaterEqual(d.width(), 600); self.assertGreaterEqual(d.height(), 440)
+        d.close(); w.pdf and setattr(w.pdf, "modified", False); w.close(); QSettings().clear()
+
+
+class ImagePropsGuiTests(unittest.TestCase):
+    def test_dialog_numeric_units_and_lock(self):
+        dialogs.settings().clear()
+        d = dialogs.ImageDialog(None, 144.0, 72.0, (200, 100))
+        self.assertAlmostEqual(d.wsp.value(), 144.0 / (72 / 25.4), places=2)        # mm di default
+        d.unit.setCurrentIndex(3)                                                    # pollici
+        self.assertAlmostEqual(d.wsp.value(), 2.0, places=3); self.assertAlmostEqual(d.hsp.value(), 1.0, places=3)
+        d.wsp.setValue(4.0); self.assertAlmostEqual(d.hsp.value(), 2.0, places=3)    # proporzioni bloccate
+        d.lock.setChecked(False); d.hsp.setValue(1.0); self.assertAlmostEqual(d.wsp.value(), 4.0, places=3)
+        w, h, a, r = d.values(); self.assertAlmostEqual(w, 288.0, places=1); self.assertAlmostEqual(h, 72.0, places=1)
+        d.lock.setChecked(True); d.wsp.setValue(2.0); self.assertAlmostEqual(d.hsp.value(), 0.5, places=3)   # nuovo rapporto 4:1
+        dialogs.settings().clear()
+
+    def test_window_image_properties_flow(self):
+        QSettings().clear()
+        w = MainWindow(); w.resize(1200, 800); w.show()
+        import io
+        from PIL import Image
+        im = Image.new("RGB", (80, 40), (255, 0, 0)); b = io.BytesIO(); im.save(b, "PNG")
+        dd = fitz.open(); pg = dd.new_page(); pg.insert_image(fitz.Rect(100, 100, 260, 180), stream=b.getvalue())
+        path = os.path.join(TMP, "ip.pdf"); dd.save(path)
+        self.assertTrue(w.open_path(path)); wait(200)
+        o = w.pdf.content_at(0, (150, 140)); w.view.select_content(0, o)
+        self.assertIsNotNone(w.selected_image())
+        m = w.build_context_menu(0, QPointF(150, 140))
+        texts = [a.text() for a in m.actions()]
+        for t in ("Proprietà immagine…", "Sostituisci immagine…", "Esporta immagine (PNG/JPG/TIFF)…"):
+            self.assertIn(t, texts)
+        w._rotate_image(0, w.selected_image()[1], 90); wait(100)
+        bb = w.pdf.page(0).get_image_info()[0]["bbox"]
+        self.assertAlmostEqual(bb[2] - bb[0], 80, delta=2)
+        w.pdf.modified = False; w.close(); QSettings().clear()
+
+
+class MultiSelectGuiTests(unittest.TestCase):
+    def setUp(self):
+        QSettings().clear()
+        self.w = MainWindow(); self.w.resize(1200, 800); self.w.show()
+        d = fitz.open(); pg = d.new_page()
+        pg.insert_text((72, 100), "Testo A", fontsize=14)
+        pg.draw_rect(fitz.Rect(300, 300, 360, 340), color=(1, 0, 0), fill=(0, 1, 0))
+        self.path = os.path.join(TMP, "ms.pdf"); d.save(self.path)
+        self.assertTrue(self.w.open_path(self.path)); wait(200)
+        self.v = self.w.view
+        self.a = self.w.pdf.add_shape(0, "rect", fitz.Rect(100, 200, 160, 240), (1, 0, 0), None, 2, 1.0)
+        self.b = self.w.pdf.add_shape(0, "ellipse", fitz.Rect(200, 200, 260, 240), (0, 0, 1), None, 2, 1.0)
+        self.w.changed([0]); wait(100)
+
+    def tearDown(self):
+        self.w.pdf.modified = False; self.w.close(); wait(30); QSettings().clear()
+
+    def vp(self, x, y):
+        r = self.v.page_rects[0]; return self.v.mapFromScene(QPointF(r.x() + x, r.y() + y))
+
+    def press_move_release(self, a, b, mod=Qt.NoModifier, steps=5):
+        vp = self.v.viewport(); pa, pb = self.vp(*a), self.vp(*b)
+        QTest.mousePress(vp, Qt.LeftButton, mod, pa)
+        for i in range(1, steps + 1):
+            QTest.mouseMove(vp, QPoint(pa.x() + (pb.x() - pa.x()) * i // steps, pa.y() + (pb.y() - pa.y()) * i // steps)); wait(5)
+        QTest.mouseRelease(vp, Qt.LeftButton, mod, pb); wait(80)
+
+    def test_ctrl_click_band_move_group_delete(self):
+        self.w.set_tool("select"); wait(30)
+        QTest.mouseClick(self.v.viewport(), Qt.LeftButton, Qt.NoModifier, self.vp(130, 220)); wait(60)
+        QTest.mouseClick(self.v.viewport(), Qt.LeftButton, Qt.ControlModifier, self.vp(230, 220)); wait(60)
+        self.assertEqual(len(self.v.multi), 2)
+        QTest.mouseClick(self.v.viewport(), Qt.LeftButton, Qt.ControlModifier, self.vp(230, 220)); wait(60)   # toglie
+        self.assertEqual(self.v.sel_xref, self.a)
+        # area: seleziona entrambe, le sposta insieme con un solo annulla
+        self.v.clear_selection()
+        self.press_move_release((80, 180), (290, 260)); self.assertEqual(len(self.v.multi), 2)
+        n0 = len(self.w.pdf._undo)
+        self.press_move_release((130, 220), (180, 280))
+        self.assertEqual(len(self.w.pdf._undo), n0 + 1)
+        ra = self.w.pdf.annot_info(0, self.a).rect; self.assertAlmostEqual(ra.x0, 150, delta=5); self.assertAlmostEqual(ra.y0, 260, delta=5)
+        self.w.undo(); wait(80)
+        self.assertAlmostEqual(self.w.pdf.annot_info(0, self.a).rect.x0, 100, delta=2)
+        # raggruppa: un clic seleziona tutto il gruppo; separa lo scioglie
+        self.v.clear_selection(); self.press_move_release((80, 180), (290, 260))
+        self.assertEqual(len(self.v.multi), 2, "prima di raggruppare")
+        self.w.group_selection(); wait(80)
+        self.assertEqual(len(self.v.multi), 2, self.w.statusBar().currentMessage())
+        self.v.clear_selection(); QTest.mouseClick(self.v.viewport(), Qt.LeftButton, Qt.NoModifier, self.vp(130, 220)); wait(60)
+        self.assertEqual(len(self.v.multi), 2)
+        m = self.w.build_context_menu(0, QPointF(130, 220)); texts = [x.text() for x in m.actions()]
+        self.assertIn("Separa il gruppo", texts)
+        self.w.ungroup_selection(); wait(60)
+        self.assertEqual(self.w.pdf.annot_group(0, self.a), [self.a])
+        # elimina multipla = un solo annulla
+        self.v.clear_selection(); self.press_move_release((80, 180), (290, 260)); n0 = len(self.w.pdf._undo)
+        self.w.delete_selection(); wait(60)
+        self.assertEqual(len(self.w.pdf.list_annots(0)), 0); self.assertEqual(len(self.w.pdf._undo), n0 + 1)
+        self.w.undo(); wait(60); self.assertEqual(len(self.w.pdf.list_annots(0)), 2)
+
+    def test_editobj_band_with_content_and_redact_toggle(self):
+        self.w.set_tool("editobj"); wait(30)
+        self.press_move_release((50, 70), (400, 360))
+        kinds = sorted((i["kind"], i["obj"]["kind"] if i["kind"] == "content" else "") for i in self.v.multi)
+        self.assertIn(("content", "text"), kinds); self.assertIn(("content", "vector"), kinds)
+        m = self.w.build_context_menu(0, QPointF(130, 220)); texts = [x.text() for x in m.actions()]
+        self.assertIn("Segna per la redazione", texts)
+        items = list(self.v.multi)
+        self.w.selected_rects_toggle_redact(0, items); wait(60)
+        self.assertEqual(self.w.pdf.pending_redactions(), len(items))
+        self.v.clear_selection(); self.w.set_tool("select"); wait(30)
+        obj = self.w.pdf.content_at(0, (330, 320))
+        self.w.set_tool("editobj"); self.v.select_content(0, obj)
+        c = self.w.pdf.redact_at(0, (330, 320)); self.assertIsNotNone(c)
+        m = self.w.build_context_menu(0, QPointF(330, 320)); texts = [x.text() for x in m.actions()]
+        self.assertIn("Annulla redazione", texts)
+        self.w._toggle_redact(0, fitz.Rect(obj["rect"])); wait(60)
+        self.assertIsNone(self.w.pdf.redact_at(0, (330, 320)))
