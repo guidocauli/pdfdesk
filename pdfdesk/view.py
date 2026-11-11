@@ -6,7 +6,8 @@ from typing import Optional
 
 import pymupdf as fitz
 
-from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, QTimer, Signal
+import os
+from PySide6.QtCore import QSettings, QEvent, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (QBrush, QColor, QImage, QKeySequence, QPainter, QPainterPath, QPen, QPixmap,
                            QTransform, QCursor, QGuiApplication)
 from PySide6.QtWidgets import (QApplication, QGraphicsItem, QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsRectItem,
@@ -37,6 +38,37 @@ def _outlined(p: QPainter, path: QPainterPath, col: QColor, w: float = 1.4) -> N
     p.drawPath(path)
     p.setPen(QPen(col, w, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
     p.drawPath(path)
+
+
+_GL_OK: Optional[bool] = None
+
+
+def gl_available() -> bool:
+    """True se si riesce a creare un contesto OpenGL funzionante (altrimenti si resta sul rendering software)."""
+    global _GL_OK
+    if _GL_OK is None:
+        try:
+            from PySide6.QtGui import QOffscreenSurface, QOpenGLContext
+            if QGuiApplication.platformName() in ("offscreen", "minimal"):
+                _GL_OK = False
+            else:
+                ctx = QOpenGLContext()
+                _GL_OK = bool(ctx.create())
+                if _GL_OK:
+                    surf = QOffscreenSurface(); surf.setFormat(ctx.format()); surf.create()
+                    _GL_OK = bool(surf.isValid() and ctx.makeCurrent(surf))
+                    ctx.doneCurrent()
+        except Exception:
+            _GL_OK = False
+    return _GL_OK
+
+
+def gpu_mode() -> str:
+    """Modalità di disegno scelta: «software» (predefinita) oppure «opengl». PDFDESK_GL=0/1 forza la scelta."""
+    env = os.environ.get("PDFDESK_GL")
+    if env in ("0", "1"):
+        return "opengl" if env == "1" else "software"
+    return "opengl" if str(QSettings("GuidoCauli", "PDFDesk").value("ui/gpu", "software")) == "opengl" else "software"
 
 
 def _cursor_canvas(w: int, h: int):
@@ -202,6 +234,15 @@ class DocView(QGraphicsView):
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
         self.setViewportUpdateMode(QGraphicsView.SmartViewportUpdate)
+        self.gl_active = False
+        if gpu_mode() == "opengl" and gl_available():          # accelerazione OpenGL (facoltativa, con ritorno al software se non disponibile)
+            try:
+                from PySide6.QtOpenGLWidgets import QOpenGLWidget
+                self.setViewport(QOpenGLWidget())
+                self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
+                self.gl_active = True
+            except Exception:
+                self.gl_active = False
         self.setFocusPolicy(Qt.StrongFocus)
         self.doc: Optional[PdfDocument] = None
         self.zoom = 1.0

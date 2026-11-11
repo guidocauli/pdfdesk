@@ -730,5 +730,89 @@ class SigningPackagingTests(unittest.TestCase):
         self.assertIn("pdfdesk-sign.key", open(os.path.join(self.ROOT, "make_sources.sh")).read())
 
 
+class ParallelTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp()
+        d = fitz.open()
+        for i in range(40):
+            p = d.new_page()
+            for k in range(12):
+                p.insert_text((50, 60 + k * 16), f"Pagina {i + 1} riga {k} àèì parola{i}", fontsize=11)
+        cls.doc = d
+
+    def setUp(self):
+        self._e = os.environ.pop("PDFDESK_CORES", None)
+
+    def tearDown(self):
+        os.environ.pop("PDFDESK_CORES", None)
+        if self._e is not None:
+            os.environ["PDFDESK_CORES"] = self._e
+
+    def test_plan(self):
+        from pdfdesk import parallel
+        n = parallel.cpu_total()
+        os.environ["PDFDESK_CORES"] = "1"
+        self.assertEqual(parallel.plan(500), 1)
+        os.environ["PDFDESK_CORES"] = str(n)
+        self.assertEqual(parallel.plan(3), 1)                      # poche pagine: seriale
+        self.assertEqual(parallel.plan(500, 10 ** 12), 1)          # file enorme: un solo processo
+        self.assertLessEqual(parallel.plan(500), n)
+        os.environ.pop("PDFDESK_CORES")
+        self.assertEqual(parallel.max_workers(), max(1, n - 1))   # automatico: n-1
+        parallel.set_cores(2)
+        self.assertEqual(parallel.max_workers(), min(2, n))
+        parallel.set_cores(0)
+
+    def test_parallel_equals_serial(self):
+        from pdfdesk import export, parallel
+        if parallel.cpu_total() < 2:
+            self.skipTest("serve almeno 2 processori")
+        import hashlib
+        out = {}
+        for c in ("1", "2"):
+            os.environ["PDFDESK_CORES"] = c
+            files = export.export_images(self.doc, list(range(40)), "png", os.path.join(self.tmp, "o" + c), dpi=72)
+            out[c] = [hashlib.md5(open(f, "rb").read()).hexdigest() for f in files]
+        self.assertEqual(len(out["1"]), 40)
+        self.assertEqual(out["1"], out["2"])
+        t = {}
+        for c in ("1", "2"):
+            os.environ["PDFDESK_CORES"] = c
+            f = os.path.join(self.tmp, f"t{c}.txt"); export.export_text(self.doc, list(range(40)), f)
+            t[c] = open(f, encoding="utf-8").read()
+        self.assertEqual(t["1"], t["2"])
+        self.assertIn("parola39", t["2"])
+
+    def test_cancel_cleans_up(self):
+        from pdfdesk import export, parallel
+        if parallel.cpu_total() < 2:
+            self.skipTest("serve almeno 2 processori")
+        os.environ["PDFDESK_CORES"] = "2"
+        before = {d for d in os.listdir(tempfile.gettempdir()) if d.startswith("pdfdesk-par-")}
+        with self.assertRaises(export.Cancelled):
+            export.export_images(self.doc, list(range(40)), "png", os.path.join(self.tmp, "c"), dpi=72, progress=lambda i, n: i < 1)
+        after = {d for d in os.listdir(tempfile.gettempdir()) if d.startswith("pdfdesk-par-")}
+        self.assertEqual(after - before, set())
+
+    def test_search_many_pages(self):
+        from pdfdesk import parallel
+        from pdfdesk.core import PdfDocument
+        if parallel.cpu_total() < 2:
+            self.skipTest("serve almeno 2 processori")
+        d = fitz.open()
+        for i in range(210):
+            d.new_page().insert_text((50, 80), f"foglio {i} trovami{i % 7}", fontsize=12)
+        p = os.path.join(self.tmp, "long.pdf"); d.save(p)
+        pdf = PdfDocument.open(p)
+        os.environ["PDFDESK_CORES"] = "2"
+        par = pdf.search("trovami3")
+        os.environ["PDFDESK_CORES"] = "1"
+        ser = pdf.search("trovami3")
+        self.assertEqual(len(par), 30)
+        self.assertEqual([(a, tuple(r)) for a, r in par], [(a, tuple(r)) for a, r in ser])
+        pdf.close()
+
+
 if __name__ == "__main__":
     unittest.main()

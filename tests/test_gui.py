@@ -977,5 +977,33 @@ class UiScaleTests(unittest.TestCase):
             self.assertGreaterEqual(pm.width(), 32)
 
 
+class GpuModeTests(unittest.TestCase):
+    def setUp(self):
+        dialogs.settings().remove("ui/gpu"); self._e = os.environ.pop("PDFDESK_GL", None)
+
+    def tearDown(self):
+        dialogs.settings().remove("ui/gpu"); os.environ.pop("PDFDESK_GL", None)
+        if self._e is not None:
+            os.environ["PDFDESK_GL"] = self._e
+
+    def test_mode_and_fallback(self):
+        from pdfdesk import view
+        self.assertEqual(view.gpu_mode(), "software")
+        dialogs.settings().setValue("ui/gpu", "opengl")
+        self.assertEqual(view.gpu_mode(), "opengl")
+        os.environ["PDFDESK_GL"] = "0"
+        self.assertEqual(view.gpu_mode(), "software")
+        os.environ["PDFDESK_GL"] = "1"
+        v = view.DocView()                      # con la piattaforma offscreen OpenGL non c'è: ritorno silenzioso al software
+        self.assertEqual(v.gl_active, view.gl_available())
+        v.deleteLater()
+
+    def test_prefs_roundtrip(self):
+        d = dialogs.PreferencesDialog()
+        d.gpu.setCurrentIndex(d.gpu.findData("opengl")); d.store()
+        self.assertEqual(str(dialogs.settings().value("ui/gpu")), "opengl")
+        d.deleteLater()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

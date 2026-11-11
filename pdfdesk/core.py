@@ -704,6 +704,20 @@ class PdfDocument:
         res = []
         if not needle:
             return res
+        if self.page_count >= 200:                            # documenti lunghi: ricerca su più core (fino a n-1)
+            try:
+                from . import parallel
+                w = parallel.plan(self.page_count, 0, 200)
+                if w > 1:
+                    data = self.doc.tobytes(garbage=0, **({"encryption": fitz.PDF_ENCRYPT_NONE} if self.doc.is_encrypted else {}))
+                    w = parallel.plan(self.page_count, len(data), 200)
+                    if w > 1:
+                        for part in sorted((x for grp in parallel.run(data, parallel.w_search, list(range(self.page_count)), w, (needle,)) for x in grp)):
+                            page = self.doc[part[0]]
+                            res.extend((part[0], to_display_rect(page, fitz.Rect(*r))) for r in part[1])
+                        return res
+            except Exception:
+                res = []                                      # qualsiasi problema coi processi: ripiega sul metodo seriale
         for pno in range(self.page_count):
             page = self.doc[pno]
             for r in page.search_for(needle):

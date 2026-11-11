@@ -1423,6 +1423,24 @@ class PreferencesDialog(QDialog):
         self.scale.setToolTip(tr("Ingrandisce tutta l'interfaccia (testo, icone, pulsanti) per gli schermi ad alta densità (HiDPI, Retina). "
                                  "«Automatica» usa la scala del sistema operativo. Si applica al riavvio del programma."))
         f6.addRow(tr("Scala dell'interfaccia"), self.scale)
+        self.gpu = QComboBox()
+        self.gpu.addItem(tr("Software (predefinito)"), "software")
+        self.gpu.addItem(tr("OpenGL (sperimentale)"), "opengl")
+        self.gpu.setCurrentIndex(max(0, self.gpu.findData(str(s.value("ui/gpu", "software")))))
+        self.gpu.setToolTip(tr("Come viene disegnata la vista delle pagine. «Software» usa solo la CPU ed è il più compatibile; «OpenGL» usa la scheda grafica "
+                               "per scorrimento e zoom. Se OpenGL non è disponibile il programma torna al software. Si applica al riavvio. "
+                               "Direct3D e Metal non sono selezionabili: Qt li usa solo nei suoi moduli grafici moderni, non nella vista a widget."))
+        f6.addRow(tr("Disegno della vista"), self.gpu)
+        from . import parallel
+        self.cores = QComboBox()
+        n_all = parallel.cpu_total()
+        self.cores.addItem(tr("Automatico (tutti meno uno: {})").format(max(1, n_all - 1)), 0)
+        for k in range(1, n_all + 1):
+            self.cores.addItem(tr("{} processori").format(k) if k > 1 else tr("1 processore (nessun calcolo parallelo)"), k)
+        self.cores.setCurrentIndex(max(0, self.cores.findData(int(s.value("perf/cores", 0)))))
+        self.cores.setToolTip(tr("Quanti processori usare, al bisogno, per le operazioni lunghe su documenti con molte pagine (esportazione in immagini o testo, ricerca). "
+                                 "Con «Automatico» si usano al massimo tutti i processori meno uno, così il computer resta reattivo."))
+        f6.addRow(tr("Processori da usare"), self.cores)
         lay.addWidget(g6)
         g3 = QGroupBox(tr("Generale")); f3 = QFormLayout(g3)
         self.recent = QSpinBox(); self.recent.setRange(0, 30); self.recent.setValue(int(s.value("recent_max", 10)))
@@ -1437,7 +1455,7 @@ class PreferencesDialog(QDialog):
     def _defaults(self) -> None:
         self.theme.setCurrentIndex(0); self.menus.setCurrentIndex(0); self.icons.setCurrentIndex(1); self.style.setCurrentIndex(0); self.rows.setCurrentIndex(0); self.locked.setChecked(False)
         self.zoom.setCurrentIndex(0); self.thumbs.setChecked(True); self.fields.setChecked(True); self.recent.setValue(10)
-        self.grid_snap.setChecked(False); self.grid_show.setChecked(False); self.grid_unit.setCurrentIndex(0); self.grid_x.setValue(5.0); self.grid_y.setValue(5.0); self.textsel.setCurrentIndex(0); self.fontpct.setValue(100); self.lang.setCurrentIndex(0); self.scale.setCurrentIndex(0)
+        self.grid_snap.setChecked(False); self.grid_show.setChecked(False); self.grid_unit.setCurrentIndex(0); self.grid_x.setValue(5.0); self.grid_y.setValue(5.0); self.textsel.setCurrentIndex(0); self.fontpct.setValue(100); self.lang.setCurrentIndex(0); self.scale.setCurrentIndex(0); self.gpu.setCurrentIndex(0); self.cores.setCurrentIndex(0)
 
     def store(self) -> None:
         s = settings()
@@ -1446,7 +1464,7 @@ class PreferencesDialog(QDialog):
         s.setValue("view/initzoom", self.zoom.currentIndex()); s.setValue("view/thumbs", self.thumbs.isChecked())
         s.setValue("view/fields", self.fields.isChecked()); s.setValue("recent_max", self.recent.value())
         s.setValue("grid/snap", self.grid_snap.isChecked()); s.setValue("grid/show", self.grid_show.isChecked())
-        s.setValue("view/textsel", self.textsel.currentData()); s.setValue("ui/fontpct", self.fontpct.value()); s.setValue("ui/scale", self.scale.currentData()); s.setValue("ui/lang", self.lang.currentData()); s.setValue("grid/unit", self.grid_unit.currentData()); s.setValue("grid/x", self.grid_x.value()); s.setValue("grid/y", self.grid_y.value())
+        s.setValue("view/textsel", self.textsel.currentData()); s.setValue("ui/fontpct", self.fontpct.value()); s.setValue("ui/scale", self.scale.currentData()); s.setValue("ui/gpu", self.gpu.currentData()); s.setValue("perf/cores", self.cores.currentData()); s.setValue("ui/lang", self.lang.currentData()); s.setValue("grid/unit", self.grid_unit.currentData()); s.setValue("grid/x", self.grid_x.value()); s.setValue("grid/y", self.grid_y.value())
 
 
 

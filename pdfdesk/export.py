@@ -18,6 +18,8 @@ from xml.sax.saxutils import escape, quoteattr
 
 import pymupdf as fitz
 
+from . import parallel
+
 Progress = Optional[Callable[[int, int], bool]]       # (fatte, totali) -> False per annullare
 
 IMAGE_FORMATS = {"png": "PNG", "jpg": "JPG", "tiff": "TIFF"}
@@ -61,6 +63,36 @@ def _tick(progress: Progress, i: int, n: int) -> None:
 
 
 # ====================================================================== immagini
+def _doc_bytes(doc: fitz.Document) -> bytes:
+    kw = {"encryption": fitz.PDF_ENCRYPT_NONE} if getattr(doc, "is_encrypted", False) else {}
+    return doc.tobytes(garbage=0, **kw)
+
+
+def _run_parallel(doc, func, items, args, progress, min_pages=parallel.MIN_PAGES):
+    """Lavoro su più processi; None se conviene restare seriali (poche pagine / un solo core / file enorme)."""
+    if parallel.plan(len(items), 0, min_pages) <= 1:
+        return None
+    data = _doc_bytes(doc)
+    w = parallel.plan(len(items), len(data), min_pages)
+    if w <= 1:
+        return None
+    try:
+        return parallel.run(data, func, items, w, args, progress)
+    except parallel.Cancelled:
+        raise Cancelled()
+    except Exception:
+        return None                    # processi non avviabili o errore in un processo: si ripete in modo seriale (che segnala l'errore vero)
+
+
+def _parallel_images(doc, pages, fmt, dpi, quality, target, base, tiff_compression, progress):
+    os.makedirs(target, exist_ok=True)
+    res = _run_parallel(doc, parallel.w_export_images, list(pages), (fmt, dpi, quality, target, base, tiff_compression), progress)
+    if res is None:
+        return None
+    ext = {"png": "png", "jpg": "jpg", "tiff": "tiff"}[fmt]
+    return [os.path.join(target, f"{base}_p{p + 1:03d}.{ext}") for p in pages]       # nell'ordine richiesto
+
+
 def export_images(doc: fitz.Document, pages: list[int], fmt: str, target: str, dpi: int = 150, quality: int = 85,
                   tiff_multipage: bool = True, tiff_compression: str = "tiff_lzw", progress: Progress = None) -> list[str]:
     """Esporta le pagine come immagini.  `target` è una cartella (file `nome_pNNN.ext`) oppure, per il TIFF
@@ -76,6 +108,10 @@ def export_images(doc: fitz.Document, pages: list[int], fmt: str, target: str, d
     else:
         os.makedirs(target, exist_ok=True)
     n = len(pages)
+    if not (fmt == "tiff" and tiff_multipage):          # più core quando le pagine sono tante (il TIFF multipagina resta seriale)
+        par = _parallel_images(doc, pages, fmt, dpi, quality, target, base, tiff_compression, progress)
+        if par is not None:
+            return par
     for k, p in enumerate(pages):
         _tick(progress, k, n)
         pix = doc[p].get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
@@ -112,6 +148,11 @@ def export_text(doc: fitz.Document, pages: list[int], target: str, progress: Pro
     from .export_fixed import layout_text
     parts = []
     n = len(pages)
+    res = _run_parallel(doc, parallel.w_text, list(pages), (keep_layout,), progress)
+    if res is not None:
+        by = {p: t for part in res for p, t in part}
+        parts = [by[p] for p in pages]
+        pages = []                                       # già fatto: il ciclo seriale sotto non gira
     for k, p in enumerate(pages):
         _tick(progress, k, n)
         parts.append(layout_text(doc[p]).rstrip("\n") if keep_layout else doc[p].get_text("text", sort=True).rstrip())

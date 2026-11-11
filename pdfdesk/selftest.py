@@ -158,6 +158,24 @@ def run() -> int:
     step("standard PDF/A e PDF/X", standards)
     step("compressione", comp)
     step("firma digitale", sign)
+    def par():
+        from . import export, parallel
+        d = fitz.open()
+        for i in range(12):
+            d.new_page().insert_text((72, 100), f"pagina {i}", fontsize=14)
+        out = os.path.join(tmp, "par")
+        old = os.environ.get("PDFDESK_CORES")
+        os.environ["PDFDESK_CORES"] = str(max(2, parallel.cpu_total()))
+        try:
+            files = export.export_images(d, list(range(12)), "png", out, dpi=50)
+        finally:
+            os.environ.pop("PDFDESK_CORES", None)
+            if old is not None:
+                os.environ["PDFDESK_CORES"] = old
+        assert len(files) == 12 and all(os.path.getsize(f) > 100 for f in files), "esportazione parallela incompleta"
+        return f"{parallel.cpu_total()} processori, fino a {parallel.max_workers()} in uso"
+
+    step("calcolo parallelo", par)
     step("interfaccia", gui)
     lines = [VERSION_LINE]
     ok = True

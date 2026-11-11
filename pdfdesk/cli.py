@@ -45,6 +45,8 @@ def _attach_console() -> None:
 
 
 def main(argv=None) -> int:
+    import multiprocessing
+    multiprocessing.freeze_support()           # eseguibili congelati: i processi figli non devono riaprire il programma
     argv = sys.argv[1:] if argv is None else argv
     for st in (sys.stdout, sys.stderr):        # Windows: la console usa spesso cp1252 e non stampa «→», «—» ecc.
         try:
