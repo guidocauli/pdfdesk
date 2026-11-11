@@ -1,63 +1,29 @@
 # PDFDesk — Guido Cauli <guido.cauli@gmail.com>
-# Compila, collauda e pubblica gli eseguibili per Windows, Linux e macOS (solo Apple Silicon: cryptography 50 non ha più pacchetti per Mac Intel). Python 3.11 e moduli del
-# requirements.lock su tutti i sistemi. macOS è di nuovo compilato qui (0.7.10); in alternativa ./build.sh su un Mac.
-# Avvio: manuale (Actions → build → Run workflow) oppure push di un tag v* (che pubblica anche la Release).
+# Compila e collauda l'eseguibile per macOS Apple Silicon (l'unico che non si può compilare altrove). Windows e Linux si compilano
+# sul computer di sviluppo (vedi README) e le Release si pubblicano a mano con quei pacchetti, più lo zip macOS prodotto qui.
+# macOS Intel non è compilato: cryptography 50 non ha più pacchetti per macOS x86_64. Python 3.11 e moduli di requirements.lock.
+# Avvio: manuale (Actions → build → Run workflow) oppure push di un tag v*. Il risultato è l'artefatto «pdfdesk-macos-arm64».
 name: build
 on:
   push: { tags: ["v*"] }
   workflow_dispatch:
-    inputs:
-      only:
-        description: "Sistemi da compilare (per non sprecare minuti: macOS costa dieci volte)"
-        type: choice
-        default: all
-        options: [all, linux, windows, macos]
-permissions: { contents: write }
+permissions: { contents: read }
 jobs:
-  check:                       # se per il tag esiste già una Release (pubblicata a mano con i pacchetti firmati) non si ricompila nulla
-    runs-on: ubuntu-latest
-    outputs: { skip: "${{ steps.c.outputs.skip }}", matrix: "${{ steps.c.outputs.matrix }}" }
-    steps:
-      - id: c
-        env: { GH_TOKEN: "${{ github.token }}" }
-        run: |
-          skip=false
-          if [ "${{ github.ref_type }}" = "tag" ] && gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" >/dev/null 2>&1; then skip=true; fi
-          echo "skip=$skip" >> "$GITHUB_OUTPUT"
-          ALL='[{"os":"ubuntu-22.04","name":"linux-x86_64"},{"os":"windows-latest","name":"windows-x86_64"},{"os":"macos-15","name":"macos-arm64"}]'
-          SEL="${{ inputs.only }}"
-          if [ -n "$SEL" ] && [ "$SEL" != "all" ]; then
-            ALL=$(echo "$ALL" | python3 -c "import json,sys; print(json.dumps([m for m in json.load(sys.stdin) if m['name'].startswith('$SEL')]))")
-          fi
-          echo "matrix={\"include\":$ALL}" >> "$GITHUB_OUTPUT"
-  build:
-    needs: check
+  macos-arm64:
+    runs-on: macos-15
     timeout-minutes: 45
-    if: needs.check.outputs.skip != 'true'
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.check.outputs.matrix) }}
-    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
-      - name: Librerie di sistema (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 softhsm2 opensc ghostscript fonts-urw-base35 libglib2.0-0
-      - name: Ghostscript (macOS)
-        if: runner.os == 'macOS'
+      - name: Ghostscript
         run: brew install ghostscript
-      - name: Ghostscript (Windows)
-        if: runner.os == 'Windows'
-        run: choco install ghostscript -y --no-progress
       - run: "python -m pip install --only-binary=:all: -r requirements.lock"
       - run: "python -m pip install -r requirements-test.txt"        # odfpy è distribuito solo come sorgente: niente --only-binary
       - run: python check_build_env.py
       - name: Test
         timeout-minutes: 25
         continue-on-error: true            # un test fallito non blocca la compilazione: lo segnala (::error::)
-        shell: bash
         env: { QT_QPA_PLATFORM: offscreen }
         run: |
           for t in core gui features standards newfeatures mergescan; do python -I -W ignore tests/test_$t.py || echo "::error::test_$t non superato"; done
@@ -65,31 +31,14 @@ jobs:
         working-directory: packaging
         run: python -m PyInstaller --noconfirm --clean --distpath ../dist --workpath ../build pdfdesk.spec
       - name: Collaudo dell'eseguibile
-        shell: bash
-        run: |
-          if [ "$RUNNER_OS" = "macOS" ]; then dist/PDFDesk.app/Contents/MacOS/pdfdesk --selftest;
-          elif [ "$RUNNER_OS" = "Windows" ]; then dist/pdfdesk.exe --selftest || true; cat "$TEMP/pdfdesk-selftest.log"; grep -q ERRORE "$TEMP/pdfdesk-selftest.log" && exit 1 || true;
-          else dist/pdfdesk --selftest; fi
+        run: dist/PDFDesk.app/Contents/MacOS/pdfdesk --selftest
       - name: Pacchetto
-        shell: bash
         run: |
           mkdir -p out
           VER=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' pdfdesk/__init__.py)
-          if [ "$RUNNER_OS" = "macOS" ]; then cp packaging/macos/sblocca.sh dist/sblocca.sh && chmod +x dist/sblocca.sh && (cd dist && ditto -c -k --keepParent PDFDesk.app ../out/pdfdesk-$VER-${{ matrix.name }}.zip && zip -q -g ../out/pdfdesk-$VER-${{ matrix.name }}.zip sblocca.sh);
-          elif [ "$RUNNER_OS" = "Windows" ]; then 7z a out/pdfdesk-$VER-${{ matrix.name }}.zip ./dist/pdfdesk.exe packaging/windows/pdfdesk-sign.cer packaging/windows/installa-certificato.cmd LICENSE README.md THIRD_PARTY.md;
-          else mkdir -p pkg/icons && cp dist/pdfdesk LICENSE README.md THIRD_PARTY.md packaging/linux/pdfdesk.desktop packaging/linux/install.sh packaging/linux/uninstall.sh pkg/ && cp packaging/assets/pdfdesk-*.png packaging/assets/pdfdesk.svg pkg/icons/ && tar -C pkg -czf out/pdfdesk-$VER-${{ matrix.name }}.tar.gz .; fi
+          cp packaging/macos/sblocca.sh dist/sblocca.sh && chmod +x dist/sblocca.sh
+          (cd dist && ditto -c -k --keepParent PDFDesk.app ../out/pdfdesk-$VER-macos-arm64.zip && zip -q -g ../out/pdfdesk-$VER-macos-arm64.zip sblocca.sh)
       - uses: actions/upload-artifact@v4
         with:
-          name: pdfdesk-${{ matrix.name }}
+          name: pdfdesk-macos-arm64
           path: out/*
-  release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with: { path: out, merge-multiple: true }
-      - name: Pubblica la release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" out/* --repo "$GITHUB_REPOSITORY" --title "PDFDesk ${GITHUB_REF_NAME#v}" --generate-notes
