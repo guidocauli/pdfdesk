@@ -110,9 +110,31 @@ def main(argv=None) -> int:
     return run_gui(args.file or None)
 
 
+def ui_scale_percent() -> int:
+    """Scala dell'interfaccia scelta nelle Preferenze (0 = automatica: segue la densità dello schermo)."""
+    try:
+        from PySide6.QtCore import QSettings
+        v = int(QSettings("GuidoCauli", "PDFDesk").value("ui/scale", 0))
+    except Exception:
+        return 0
+    return v if v == 0 or 50 <= v <= 400 else 0
+
+
+def configure_hidpi() -> None:
+    """Da chiamare prima di creare QApplication: scale frazionarie esatte (125 %, 150 %…) invece che arrotondate, e
+    l'eventuale scala forzata dall'utente. Una variabile QT_SCALE_FACTOR già impostata ha la precedenza."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QGuiApplication
+    QGuiApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    pct = ui_scale_percent()
+    if pct and "QT_SCALE_FACTOR" not in os.environ:
+        os.environ["QT_SCALE_FACTOR"] = f"{pct / 100:.3f}".rstrip("0").rstrip(".")
+
+
 def run_gui(path=None) -> int:
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication
+    configure_hidpi()
     from .icons import app_icon
     from .mainwindow import MainWindow
     app = QApplication(sys.argv[:1])

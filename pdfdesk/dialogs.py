@@ -11,10 +11,11 @@ from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPainterPath, QPen, Q
 from PySide6.QtWidgets import (QAbstractItemView, QBoxLayout, QApplication, QCheckBox, QColorDialog, QComboBox, QDialog as _QDialog, QDialogButtonBox,
                                QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QProgressDialog,
                                QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton,
-                               QSlider, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
+                               QSlider, QSpinBox, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget)
 
 from . import AUTHOR, CREDITS, VERSION_LINE, __version__, compress, pdfstd, signing, sigstore
 from . import fonts as fontlib
+from . import textbox
 from .core import FONT_NAMES, FONTS
 from .icons import app_icon
 from .i18n import tr
@@ -197,6 +198,47 @@ class FontCombo(QComboBox):
 
 
 # ---------------------------------------------------------------------- pannello proprietà
+class StyleButtons(QWidget):
+    """Quattro pulsanti attivabili: grassetto, corsivo, sottolineato, barrato. Il valore è una stringa di lettere «bius»."""
+    changed = Signal(str)
+    LETTERS = (("b", "B", tr("Grassetto")), ("i", "I", tr("Corsivo")), ("u", "U", tr("Sottolineato")), ("s", "S", tr("Barrato")))
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(2)
+        self.btn: dict[str, QToolButton] = {}
+        for key, label, tip in self.LETTERS:
+            b = QToolButton(); b.setText(label); b.setCheckable(True); b.setToolTip(tip); b.setAutoRaise(False)
+            side = max(26, int(self.fontMetrics().height() * 1.7))
+            b.setFixedSize(side, side)
+            f = b.font(); f.setBold(key == "b"); f.setItalic(key == "i"); f.setUnderline(key == "u"); f.setStrikeOut(key == "s")
+            b.setFont(f)
+            b.toggled.connect(lambda _on: self._emit())
+            lay.addWidget(b)
+            self.btn[key] = b
+        self._lock = False
+
+    def _emit(self) -> None:
+        if not self._lock:
+            self.changed.emit(self.style())
+
+    def style(self) -> str:
+        return "".join(k for k in "bius" if self.btn[k].isChecked() and self.btn[k].isEnabled())
+
+    def set_style(self, st: str) -> None:
+        self._lock = True
+        for k, b in self.btn.items():
+            b.setChecked(k in (st or ""))
+        self._lock = False
+
+    def set_custom_font(self, custom: bool) -> None:
+        """Un font TTF/OTF ha un solo file: grassetto e corsivo non sono disponibili, sottolineato e barrato sì."""
+        for k in "bi":
+            self.btn[k].setEnabled(not custom)
+            self.btn[k].setToolTip(tr("Non disponibile con i font TTF/OTF aggiunti (un solo stile per file)") if custom else dict((a, c) for a, _, c in self.LETTERS)[k])
+
+
 class PropertiesPanel(QWidget):
     """Proprietà dello strumento corrente o dell'annotazione selezionata (barra orizzontale compatta)."""
     changed = Signal(dict)
@@ -212,6 +254,7 @@ class PropertiesPanel(QWidget):
         self.opacity = QSlider(Qt.Horizontal); self.opacity.setRange(5, 100); self.opacity.setValue(100)
         self.font = FontCombo()
         self.size = QDoubleSpinBox(); self.size.setRange(4, 200); self.size.setValue(12); self.size.setKeyboardTracking(False)
+        self.styles_ = StyleButtons()
         tips = ((self.stroke, tr("Colore del tratto / del testo (è anche il bordo della casella)")),
                 (self.fill, tr("Colore di riempimento")), (self.fill_on, tr("Attiva o disattiva il riempimento")),
                 (self.width, tr("Spessore del tratto in punti")), (self.opacity, tr("Opacità del tratto (5–100%)")),
@@ -226,7 +269,7 @@ class PropertiesPanel(QWidget):
             self._box = h
             h.setContentsMargins(4, 0, 4, 0); h.setSpacing(5)
             for label, w in ((None, self.stroke), (None, self.fill_on), (None, self.fill), (tr("Spess."), self.width),
-                             (tr("Opac."), self.opacity), (None, self.font), (tr("Dim."), self.size)):
+                             (tr("Opac."), self.opacity), (None, self.font), (tr("Dim."), self.size), (None, self.styles_)):
                 if label:
                     l = QLabel(label); l.setToolTip(w.toolTip()); h.addWidget(l)
                 h.addWidget(w)
@@ -240,6 +283,7 @@ class PropertiesPanel(QWidget):
             f.addRow(tr("Opacità"), self.opacity)
             f.addRow(tr("Carattere"), self.font)
             f.addRow(tr("Dimensione"), self.size)
+            f.addRow(tr("Stile"), self.styles_)
         self.stroke.changed.connect(lambda c: self._emit(stroke=c))
         self.fill.changed.connect(lambda c: (self.fill_on.setChecked(True), self._emit(fill=c)))
         self.fill_on.toggled.connect(lambda on: self._emit(fill=self.fill.color if on and self.fill.color else (None if not on else (1, 1, 0.8))))
@@ -247,6 +291,8 @@ class PropertiesPanel(QWidget):
         self.opacity.sliderReleased.connect(lambda: self._emit(opacity=self.opacity.value() / 100))
         self.font.codeChanged.connect(lambda c: self._emit(fontname=c))
         self.size.valueChanged.connect(lambda v: self._emit(fontsize=v))
+        self.styles_.changed.connect(lambda st: self._emit(style=st))
+        self.font.codeChanged.connect(lambda c: self.styles_.set_custom_font(c.startswith("@")))
 
     def set_vertical(self, vertical: bool) -> None:
         """Barra agganciata ai lati: i controlli si dispongono in colonna."""
@@ -277,6 +323,8 @@ class PropertiesPanel(QWidget):
             self.opacity.setValue(int(style.get("opacity", 1.0) * 100))
             self.font.set_code(style.get("fontname", "helv"))
             self.size.setValue(style.get("fontsize", 12.0))
+            self.styles_.set_custom_font(str(style.get("fontname", "helv")).startswith("@"))
+            self.styles_.set_style(style.get("style", ""))
         finally:
             self._lock = False
 
@@ -288,7 +336,7 @@ class PropertiesPanel(QWidget):
         shape = tool in ("rect", "ellipse", "text", "select")
         self.fill.setEnabled(shape); self.fill_on.setEnabled(shape)
         txt = tool in ("text", "select", "edittext")
-        self.font.setEnabled(txt); self.size.setEnabled(txt)
+        self.font.setEnabled(txt); self.size.setEnabled(txt); self.styles_.setEnabled(txt)
 
 
 # ---------------------------------------------------------------------- miniature
@@ -399,20 +447,31 @@ class ThumbPanel(QListWidget):
 # ---------------------------------------------------------------------- testo
 class TextDialog(QDialog):
     def __init__(self, parent, title: str, text: str = "", fontsize: float = 12, fontname: str = "helv",
-                 color=(0, 0, 0), fill=None, show_style: bool = True) -> None:
+                 color=(0, 0, 0), fill=None, show_style: bool = True, style: str = "") -> None:
         super().__init__(parent)
         self.setWindowTitle(title)
-        self.resize(460, 320)
+        self.resize(520, 320)
         lay = QVBoxLayout(self)
         self.edit = QPlainTextEdit(text)
         lay.addWidget(self.edit, 1)
         row = QHBoxLayout()
+        if not fontname.startswith("@"):                       # hebo, tiit… → carattere base + stile
+            st = set(style)
+            if fontname.endswith(("bo", "bi")):
+                st.add("b")
+            if fontname.endswith(("it", "bi")):
+                st.add("i")
+            style = "".join(k for k in "bius" if k in st)
+            fontname = textbox.base_code(fontname)
         self.font = FontCombo(); self.font.set_code(fontname)
+        self.styles_ = StyleButtons(); self.styles_.set_style(style)
+        self.styles_.set_custom_font(fontname.startswith("@"))
+        self.font.codeChanged.connect(lambda c: (self.styles_.set_custom_font(c.startswith("@"))))
         self.size = QDoubleSpinBox(); self.size.setRange(4, 200); self.size.setValue(fontsize)
         self.color = ColorButton(color)
         self.fill_on = QCheckBox(tr("Sfondo")); self.fill_on.setChecked(bool(fill))
         self.fill = ColorButton(fill or (1, 1, 0.8), allow_none=False)
-        for w in (QLabel(tr("Carattere")), self.font, QLabel(tr("Dim.")), self.size, QLabel(tr("Colore")), self.color, self.fill_on, self.fill):
+        for w in (QLabel(tr("Carattere")), self.font, QLabel(tr("Dim.")), self.size, self.styles_, QLabel(tr("Colore")), self.color, self.fill_on, self.fill):
             row.addWidget(w)
         row.addStretch()
         lay.addLayout(row)
@@ -427,6 +486,7 @@ class TextDialog(QDialog):
 
     def values(self) -> dict:
         return {"text": self.edit.toPlainText(), "fontsize": self.size.value(), "fontname": self.font.code(),
+                "style": self.styles_.style(),
                 "color": self.color.color, "fill": self.fill.color if self.fill_on.isChecked() else None}
 
 
@@ -465,7 +525,7 @@ class SignatureCanvas(QWidget):
         self.setMinimumSize(560, 220)
         self.strokes: list[list[QPointF]] = []
         self.color = QColor(10, 20, 120)
-        self.width = 3.0
+        self.pen_width = 3.0        # NB: non «width», che coprirebbe QWidget.width() e bloccherebbe il disegno
         self.setCursor(Qt.CrossCursor)
 
     def paintEvent(self, e) -> None:
@@ -477,7 +537,7 @@ class SignatureCanvas(QWidget):
         self._draw(p)
 
     def _draw(self, p: QPainter) -> None:
-        p.setPen(QPen(self.color, self.width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setPen(QPen(self.color, self.pen_width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         for s in self.strokes:
             if len(s) == 1:
                 p.drawPoint(s[0])
@@ -525,7 +585,7 @@ class DrawSignatureDialog(QDialog):
         row = QHBoxLayout()
         row.addWidget(QLabel(tr("Spessore")))
         sl = QSlider(Qt.Horizontal); sl.setRange(1, 10); sl.setValue(3)
-        sl.valueChanged.connect(lambda v: (setattr(self.canvas, "width", float(v)), self.canvas.update()))
+        sl.valueChanged.connect(lambda v: (setattr(self.canvas, "pen_width", float(v)), self.canvas.update()))
         row.addWidget(sl)
         self.col = ColorButton((10 / 255, 20 / 255, 120 / 255))
         self.col.changed.connect(lambda c: (setattr(self.canvas, "color", qcolor(c)), self.canvas.update()))
@@ -1346,11 +1406,23 @@ class PreferencesDialog(QDialog):
         self.lang.setToolTip(tr("Lingua dell'interfaccia (si applica al riavvio del programma)"))
         f7.addRow(tr("Lingua dell'interfaccia"), self.lang)
         lay.addWidget(g7)
-        g6 = QGroupBox(tr("Carattere dell'interfaccia")); f6 = QFormLayout(g6)
+        g6 = QGroupBox(tr("Dimensioni dell'interfaccia")); f6 = QFormLayout(g6)
         self.fontpct = QSpinBox(); self.fontpct.setRange(70, 200); self.fontpct.setSingleStep(5); self.fontpct.setSuffix(" %")
         self.fontpct.setValue(int(s.value("ui/fontpct", 100)))
         self.fontpct.setToolTip(tr("Ingrandisce o rimpicciolisce il testo di menu, barre, pannelli e finestre (100 % = dimensione di sistema)"))
         f6.addRow(tr("Dimensione"), self.fontpct)
+        self.scale = QComboBox()
+        self.scale.addItem(tr("Automatica (segue lo schermo)"), 0)
+        for pct in (100, 125, 150, 175, 200, 250, 300):
+            self.scale.addItem(f"{pct} %", pct)
+        cur = int(s.value("ui/scale", 0))
+        i = self.scale.findData(cur)
+        if i < 0:
+            self.scale.addItem(f"{cur} %", cur); i = self.scale.count() - 1
+        self.scale.setCurrentIndex(i)
+        self.scale.setToolTip(tr("Ingrandisce tutta l'interfaccia (testo, icone, pulsanti) per gli schermi ad alta densità (HiDPI, Retina). "
+                                 "«Automatica» usa la scala del sistema operativo. Si applica al riavvio del programma."))
+        f6.addRow(tr("Scala dell'interfaccia"), self.scale)
         lay.addWidget(g6)
         g3 = QGroupBox(tr("Generale")); f3 = QFormLayout(g3)
         self.recent = QSpinBox(); self.recent.setRange(0, 30); self.recent.setValue(int(s.value("recent_max", 10)))
@@ -1365,7 +1437,7 @@ class PreferencesDialog(QDialog):
     def _defaults(self) -> None:
         self.theme.setCurrentIndex(0); self.menus.setCurrentIndex(0); self.icons.setCurrentIndex(1); self.style.setCurrentIndex(0); self.rows.setCurrentIndex(0); self.locked.setChecked(False)
         self.zoom.setCurrentIndex(0); self.thumbs.setChecked(True); self.fields.setChecked(True); self.recent.setValue(10)
-        self.grid_snap.setChecked(False); self.grid_show.setChecked(False); self.grid_unit.setCurrentIndex(0); self.grid_x.setValue(5.0); self.grid_y.setValue(5.0); self.textsel.setCurrentIndex(0); self.fontpct.setValue(100); self.lang.setCurrentIndex(0)
+        self.grid_snap.setChecked(False); self.grid_show.setChecked(False); self.grid_unit.setCurrentIndex(0); self.grid_x.setValue(5.0); self.grid_y.setValue(5.0); self.textsel.setCurrentIndex(0); self.fontpct.setValue(100); self.lang.setCurrentIndex(0); self.scale.setCurrentIndex(0)
 
     def store(self) -> None:
         s = settings()
@@ -1374,7 +1446,7 @@ class PreferencesDialog(QDialog):
         s.setValue("view/initzoom", self.zoom.currentIndex()); s.setValue("view/thumbs", self.thumbs.isChecked())
         s.setValue("view/fields", self.fields.isChecked()); s.setValue("recent_max", self.recent.value())
         s.setValue("grid/snap", self.grid_snap.isChecked()); s.setValue("grid/show", self.grid_show.isChecked())
-        s.setValue("view/textsel", self.textsel.currentData()); s.setValue("ui/fontpct", self.fontpct.value()); s.setValue("ui/lang", self.lang.currentData()); s.setValue("grid/unit", self.grid_unit.currentData()); s.setValue("grid/x", self.grid_x.value()); s.setValue("grid/y", self.grid_y.value())
+        s.setValue("view/textsel", self.textsel.currentData()); s.setValue("ui/fontpct", self.fontpct.value()); s.setValue("ui/scale", self.scale.currentData()); s.setValue("ui/lang", self.lang.currentData()); s.setValue("grid/unit", self.grid_unit.currentData()); s.setValue("grid/x", self.grid_x.value()); s.setValue("grid/y", self.grid_y.value())
 
 
 

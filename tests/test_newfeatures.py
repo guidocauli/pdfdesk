@@ -656,5 +656,53 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual(r, {"version": "9.9.9", "url": "https://example.org/r", "notes": "note"})
 
 
+class CommentAndTextStyleCoreTests(unittest.TestCase):
+    def setUp(self):
+        self.d = PdfDocument.open(SRC)
+
+    def test_comment_roundtrip(self):
+        x = self.d.add_comment(0, (100, 200), "Ciao")
+        inf = self.d.annot_info(0, x)
+        self.assertEqual((inf.type, inf.text, inf.movable, inf.resizable), (0, "Ciao", True, False))
+        nx = self.d.set_rect(0, x, fitz.Rect(150, 250, 400, 400))
+        r = self.d.annot_info(0, nx).rect
+        self.assertAlmostEqual(r.width, inf.rect.width, places=1)           # l'icona non si ridimensiona
+        self.d.set_props(0, nx, text="Nuovo")
+        out = os.path.join(tempfile.mkdtemp(), "c.pdf"); self.d.doc.save(out)
+        doc = fitz.open(out); pg = doc[0]
+        a = list(pg.annots())[0]
+        self.assertEqual((a.type[1], a.info["content"]), ("Text", "Nuovo"))
+
+    def test_text_styles_persist_and_render(self):
+        base = self.d.add_text(0, fitz.Rect(50, 400, 350, 440), "Testo di prova", 14, "helv", (0, 0, 0), None, 0, "")
+        sty = self.d.add_text(0, fitz.Rect(50, 450, 350, 490), "Testo di prova", 14, "tiro", (0, 0, 0), None, 0, "bus")
+        self.assertEqual(self.d.annot_info(0, sty).style, "bus")
+        self.assertEqual(self.d.annot_info(0, base).style, "")
+        nx = self.d.set_props(0, base, style="u")
+        self.assertEqual(self.d.annot_info(0, nx).style, "u")
+        nx = self.d.set_rect(0, nx, fitz.Rect(60, 400, 400, 460))           # ridimensionato: l'aspetto si rigenera con lo stile
+        self.assertEqual(self.d.annot_info(0, nx).style, "u")
+        out = os.path.join(tempfile.mkdtemp(), "s.pdf"); self.d.doc.save(out)
+        r = fitz.open(out); rp = r[0]
+        self.assertEqual(len(list(rp.annots())), 2)
+        # sottolineato/barrato disegnano davvero una riga nell'aspetto
+        plain = self.d.add_text(0, fitz.Rect(50, 500, 350, 540), "Riga", 14, "helv", (0, 0, 0), None, 0, "")
+        under = self.d.add_text(0, fitz.Rect(50, 550, 350, 590), "Riga", 14, "helv", (0, 0, 0), None, 0, "u")
+        pm1 = self.d.doc[0].get_pixmap(clip=fitz.Rect(50, 500, 350, 540), dpi=100)
+        pm2 = self.d.doc[0].get_pixmap(clip=fitz.Rect(50, 550, 350, 590), dpi=100)
+        dark = lambda pm: sum(1 for i in range(0, len(pm.samples), pm.n) if pm.samples[i] < 100)
+        self.assertGreater(dark(pm2), dark(pm1))
+
+    def test_replace_text_block_with_styles(self):
+        blk = self.d.text_block_at(0, (100, 100))
+        self.d.replace_text_block(0, blk["rect"], "Nuovo titolo", 16, "helv", (0, 0, 0), None, "b")
+        names = [f[3] for f in self.d.doc[0].get_fonts()]
+        self.assertTrue(any("Bold" in n or "bo" in n.lower() for n in names), names)
+        blk = self.d.text_block_at(0, (100, 100))
+        n0 = len(self.d.doc[0].get_drawings())
+        self.d.replace_text_block(0, blk["rect"], "Nuovo titolo", 16, "helv", (0, 0, 0), None, "us")
+        self.assertGreater(len(self.d.doc[0].get_drawings()), n0)             # righe di sottolineato e barrato
+
+
 if __name__ == "__main__":
     unittest.main()

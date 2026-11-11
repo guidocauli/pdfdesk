@@ -7,13 +7,14 @@ from typing import Optional
 
 import pymupdf as fitz
 from PySide6.QtCore import QEventLoop, QPointF, QRectF, QSize, Qt, QTimer
-from PySide6.QtGui import QAction, QFont, QIcon, QActionGroup, QColor, QImage, QKeySequence, QPixmap
+from PySide6.QtGui import QAction, QShortcut, QFont, QIcon, QActionGroup, QColor, QImage, QKeySequence, QPixmap
 from PySide6.QtWidgets import (QApplication, QDockWidget, QMenu, QProgressDialog, QTabBar, QSpinBox, QToolButton, QFileDialog, QFrame, QHBoxLayout, QInputDialog, QLabel,
                                QLineEdit, QMainWindow, QMessageBox, QPushButton, QToolBar, QVBoxLayout, QWidget,
                                QComboBox)
 
 from . import AUTHOR, CREDITS, VERSION_LINE, __version__, compress, fonts, pdfstd, signing, sigstore
-from .core import PasswordRequired, PdfDocument, PdfError, T_FREETEXT, T_STAMP, to_page_rect
+from .core import (release_memory, PasswordRequired, PdfDocument, PdfError, T_FREETEXT, T_STAMP, T_NOTE, T_SQUARE, T_CIRCLE, T_INK, T_LINE,
+                   T_HIGHLIGHT, T_UNDERLINE, T_STRIKE, T_REDACT, to_page_rect)
 from .inmenu import InMenuBar, wayland_session
 from .dialogs import (ModalPlacer, AboutDialog, ImageDialog, MergeDialog, ScanDialog, ExportDialog, ExtractImagesDialog, ImageOutDialog, MetadataDialog, FieldTextDialog, StandardDialog, PropertiesPanel, SaveDialog, SignatureLibraryDialog, SignDialog, TextDialog,
                       ThumbPanel, VerifyDialog, CertDialog, PreferencesDialog, settings)
@@ -41,6 +42,7 @@ TOOLS = [  # chiave, etichetta, scorciatoia, suggerimento
     ("line", tr("Linea"), "L", tr("Linea (trascina)")),
     ("arrow", tr("Freccia"), "A", tr("Freccia (trascina)")),
     ("text", tr("Casella di testo"), "X", tr("Casella di testo (trascina o clicca)")),
+    ("comment", tr("Commento"), "C", tr("Clicca sulla pagina per inserire un commento (nota)")),
     ("form", tr("Compila modulo"), "K", tr("Clicca sui campi del modulo per compilarli")),
     ("edittext", tr("Modifica testo"), "M", tr("Clicca su un blocco di testo del PDF per riscriverlo")),
     None,
@@ -73,7 +75,7 @@ class MainWindow(QMainWindow):
             "pen": {"pen": (0.05, 0.1, 0.55), "width": 2.0, "opacity": 1.0},
             "highlighter": {"pen": (1.0, 0.9, 0.0), "width": 14.0, "opacity": 0.45},
             "shape": {"pen": (0.8, 0.0, 0.0), "fill": None, "width": 2.0, "opacity": 1.0},
-            "text": {"pen": (0.0, 0.0, 0.0), "fill": None, "width": 0.0, "opacity": 1.0, "fontsize": 12.0, "fontname": "helv"},
+            "text": {"pen": (0.0, 0.0, 0.0), "fill": None, "width": 0.0, "opacity": 1.0, "fontsize": 12.0, "fontname": "helv", "style": ""},
             "hl": {"pen": (1.0, 1.0, 0.0), "width": 1.0, "opacity": 1.0},
             "ul": {"pen": (0.0, 0.75, 0.0), "width": 1.0, "opacity": 1.0},
             "st": {"pen": (1.0, 0.0, 0.0), "width": 1.0, "opacity": 1.0},
@@ -83,6 +85,10 @@ class MainWindow(QMainWindow):
         self._thumb_timer = QTimer(self)
         self._thumb_timer.setInterval(15)
         self._thumb_timer.timeout.connect(self._thumb_step)
+        self._mem_timer = QTimer(self)                     # ogni 2 minuti alleggerisce la cache del motore PDF (rinasce da sola)
+        self._mem_timer.setInterval(120_000)
+        self._mem_timer.timeout.connect(lambda: release_memory(50))
+        self._mem_timer.start()
 
         self.view = DocView()
         self.banner = self._make_banner()
@@ -144,6 +150,9 @@ class MainWindow(QMainWindow):
         v_.contentDoubleClicked.connect(self.on_content_double)
         v_.currentPageChanged.connect(self.on_page_changed)
         v_.zoomChanged.connect(lambda z: self.lbl_zoom.setText(f"{z * 100:.0f}%"))
+        v_.imageRotateRequested.connect(self.on_image_rotate)
+        v_.rotateModeChanged.connect(lambda on: self.msg(tr("Modalità rotazione: trascina attorno al centro per ruotare (Maiusc = scatti di 15°); clicca fuori o premi Esc per uscire.") if on else "", 8000))
+        QShortcut(QKeySequence(Qt.Key_Escape), self, self.escape_pressed)      # Esc: torna sempre allo strumento Seleziona
         self.thumbs.pageSelected.connect(lambda i: self.view.go_to_page(i))
         self.thumbs.pageMoved.connect(self.on_thumb_moved)
         self.thumbs.action.connect(self.on_thumb_action)
@@ -522,6 +531,7 @@ class MainWindow(QMainWindow):
         for key in ("pen", "highlighter", "hl", "ul", "st"):
             ins.addAction(T[key])
         ins.addSeparator()
+        ins.addAction(T["comment"])
         ins.addAction(T["redact"])
         ins.addSeparator()
         for a in (self.a_blank, self.a_insert):
@@ -605,9 +615,12 @@ class MainWindow(QMainWindow):
     def preferences(self) -> None:
         old_rows = int(settings().value("ui/rows", 0))
         old_lang = str(settings().value("ui/lang", "it"))
+        old_scale = int(settings().value("ui/scale", 0))
         dlg = PreferencesDialog(self)
         if dlg.exec():
             dlg.store()
+            if int(settings().value("ui/scale", 0)) != old_scale:
+                QMessageBox.information(self, tr("Scala dell'interfaccia"), tr("La nuova scala sarà applicata al prossimo avvio di PDFDesk."))
             if str(settings().value("ui/lang", "it")) != old_lang:
                 QMessageBox.information(self, tr("Lingua"), tr("La nuova lingua sarà applicata al prossimo avvio di PDFDesk."))
             self.apply_prefs(relayout=int(settings().value("ui/rows", 0)) != old_rows)
@@ -627,10 +640,14 @@ class MainWindow(QMainWindow):
         has = self.pdf is not None
         for a in (self.a_save, self.a_saveas, self.a_close, self.a_find, self.a_zin, self.a_zout, self.a_z100, self.a_fitw,
                   self.a_fitp, self.a_rotl, self.a_rotr, self.a_deletep, self.a_dup, self.a_blank, self.a_insert,
-                  self.a_extract, self.a_sigimg, self.a_sigdraw, self.a_sigdig, self.a_verify, self.a_apply_red, self.a_del, self.a_imgprops, self.a_group, self.a_ungroup,
+                  self.a_extract, self.a_sigimg, self.a_sigdraw, self.a_sigdig, self.a_apply_red, self.a_del, self.a_imgprops, self.a_group, self.a_ungroup,
                   self.a_prevp, self.a_nextp):
             a.setEnabled(has)
         self.spin_page.setEnabled(has); self.zoom_btn.setEnabled(has)
+        # la verifica ha senso solo se il documento contiene firme digitali
+        self.a_verify.setEnabled(bool(has and self.pdf.is_signed))
+        self.a_verify.setToolTip(tr("Verifica le firme digitali del documento") if has and self.pdf.is_signed
+                                 else tr("Disponibile solo se il documento contiene firme digitali"))
         # nessuno strumento (disegno, inserimento, modifica, moduli, firma…) è attivo senza un PDF aperto
         for a in list(self.tool_actions.values()) + [self.a_standard, self.a_flatten, self.a_formtool, self.a_showfields,
                                                       self.a_find_next, self.a_find_prev, self.a_print, self.a_export, self.a_meta, self.a_extract_imgs,
@@ -904,6 +921,7 @@ class MainWindow(QMainWindow):
             doc.close()
         except Exception:
             pass
+        release_memory(100)                      # il documento chiuso non deve lasciare memoria occupata
         if was_active:
             if self.docs:
                 self._activate(self.docs[min(i, len(self.docs) - 1)])
@@ -1298,7 +1316,7 @@ class MainWindow(QMainWindow):
             self.props.load(st)
         if self.pdf is not None:
             self.props.enable_for(tool)
-        hints = {"sign": tr("Clicca o trascina sulla pagina per inserire la firma."), "image": tr("Clicca o trascina per inserire un'immagine."),
+        hints = {"comment": tr("Clicca sulla pagina nel punto in cui inserire il commento."), "sign": tr("Clicca o trascina sulla pagina per inserire la firma."), "image": tr("Clicca o trascina per inserire un'immagine."),
                  "edittext": tr("Clicca su un blocco di testo del PDF per modificarlo."),
                  "editobj": tr("Clicca un testo, un'immagine o una grafica del PDF: trascinalo per spostarlo, usa le maniglie per ridimensionarlo, Canc per eliminarlo."), "redact": tr("Clicca un testo, un'immagine o una grafica per segnarli, oppure trascina per segnare un'area; poi Modifica → Applica redazioni."),
                  "textsel": tr("Trascina dal primo all'ultimo carattere per copiare il testo (anche su più righe); con Alt selezioni ad area."), "sigbox": tr("Trascina per disegnare il riquadro della firma digitale.")}
@@ -1522,13 +1540,16 @@ class MainWindow(QMainWindow):
             if len(pdf.annot_group(pno, info.xref)) > 1:
                 add(tr("Separa il gruppo"), self.ungroup_selection, "ungroup")
             if info.type == T_FREETEXT:
-                add(tr("Modifica testo…"), lambda: self.on_double(pno, info.xref), "edittext")
+                add(tr("Modifica testo…"), lambda: self.edit_text_annot(pno, info.xref), "edittext")
+            if info.type == T_NOTE:
+                add(tr("Modifica commento…"), lambda: self.edit_comment(pno, info.xref), "comment")
             if info.type == T_STAMP:
                 tg = {"kind": "annot", "xref": info.xref}
                 add(tr("Proprietà immagine…"), lambda: self.image_properties(pno, tg), "image")
                 add(tr("Sostituisci immagine…"), lambda: self.image_properties(pno, tg, replace_first=True), "image")
                 add(tr("Ruota di 90° in senso orario"), lambda: self._rotate_image(pno, tg, 90), "rotr")
                 add(tr("Ruota di 90° in senso antiorario"), lambda: self._rotate_image(pno, tg, -90), "rotl")
+                add(tr("Ruota di un angolo…"), lambda: self._rotate_image_by(pno, tg), "rotr")
                 add(tr("Esporta immagine (PNG/JPG/TIFF)…"), lambda: self.export_image(pno, tg), "grab")
                 m.addSeparator()
             if info.type == fitz.PDF_ANNOT_REDACT:
@@ -1553,6 +1574,7 @@ class MainWindow(QMainWindow):
                 add(tr("Sostituisci immagine…"), lambda: self.image_properties(pno, tg, replace_first=True), "image")
                 add(tr("Ruota di 90° in senso orario"), lambda: self._rotate_image(pno, tg, 90), "rotr")
                 add(tr("Ruota di 90° in senso antiorario"), lambda: self._rotate_image(pno, tg, -90), "rotl")
+                add(tr("Ruota di un angolo…"), lambda: self._rotate_image_by(pno, tg), "rotr")
                 add(tr("Esporta immagine (PNG/JPG/TIFF)…"), lambda: self.export_image(pno, tg), "grab")
             add(tr("Annulla redazione") if self._is_marked(pno, rect) else tr("Segna per la redazione"),
                 lambda: self._toggle_redact(pno, rect), "redact")
@@ -1564,6 +1586,7 @@ class MainWindow(QMainWindow):
             add(tr("Copia l'area negli appunti"), lambda: self.grab_area(pno, rect, opts=dict(clip)), "export")
         if rect is None and field is None:
             add(tr("Aggiungi casella di testo qui"), lambda: self._ctx_text(pno, p), "text")
+            add(tr("Aggiungi commento qui…"), lambda: self._ctx_comment(pno, p), "comment")
             add(tr("Inserisci immagine qui"), lambda: self._ctx_image(pno, p), "image")
             m.addSeparator()
             for a in (self.a_rotl, self.a_rotr, self.a_dup, self.a_deletep):
@@ -1639,6 +1662,29 @@ class MainWindow(QMainWindow):
             self.msg(tr("Segnato per la redazione. Modifica → Applica redazioni per oscurarlo in modo permanente."), 8000)
             self.changed([pno])
 
+    def escape_pressed(self) -> None:
+        """Esc: chiude le tendine aperte; altrimenti annulla l'operazione in corso e riporta allo strumento Seleziona."""
+        if self.menus.panels:
+            self.menus.close_all()
+            return
+        self.view._cancel_drag()
+        self.set_tool("select")
+
+    def on_image_rotate(self, pno: int, angle: float) -> None:
+        v = self.view
+        if v.sel_content is not None and v.sel_content.get("kind") == "image":
+            tg = {"kind": "content", "obj": v.sel_content}
+        elif v.sel_info is not None:
+            tg = {"kind": "annot", "xref": v.sel_xref}
+        else:
+            return
+        self._rotate_image(pno, tg, angle)
+
+    def _rotate_image_by(self, pno: int, target: dict) -> None:
+        a, ok = QInputDialog.getDouble(self, tr("Ruota immagine"), tr("Gradi (positivi = senso orario):"), 15.0, -360.0, 360.0, 1)
+        if ok and abs(a) > 1e-6:
+            self._rotate_image(pno, target, a)
+
     def _rotate_image(self, pno: int, target: dict, angle: float) -> None:
         r = self.pdf.image_rect_of(pno, target)
         t2 = self.guard(self.pdf.modify_image, pno, target, r, angle, None)
@@ -1653,6 +1699,10 @@ class MainWindow(QMainWindow):
 
     def _mark_text(self, pno: int, kind: str, rect) -> None:
         if self.guard(self.pdf.add_markup, pno, kind, fitz.Rect(rect), self.style_for(kind)["pen"]) is not None:
+            self.changed([pno])
+
+    def _ctx_comment(self, pno: int, p: QPointF) -> None:
+        if self.add_comment_at(pno, p) is not None:
             self.changed([pno])
 
     def _ctx_text(self, pno: int, p: QPointF) -> None:
@@ -1699,6 +1749,10 @@ class MainWindow(QMainWindow):
             x = self.pdf.annot_at(pno, (p.x(), p.y()))
             if x is not None and self.pdf.delete_annot(pno, x):
                 self.changed([pno])
+        elif tool == "comment":
+            x = self.add_comment_at(pno, p)
+            if x is not None:
+                self.changed([pno])
         elif tool == "text":
             x = self.add_text_box(pno, fitz.Rect(p.x(), p.y(), p.x() + 200, p.y() + 40))
             if x is not None:
@@ -1710,14 +1764,42 @@ class MainWindow(QMainWindow):
         elif tool == "sigbox":
             self.finish_visible_signature(pno, fitz.Rect(p.x(), p.y(), p.x() + 180, p.y() + 70))
 
+    def _comment_text(self, title: str, text: str = "") -> Optional[str]:
+        t, ok = QInputDialog.getMultiLineText(self, title, tr("Testo del commento:"), text)
+        return t if ok else None
+
+    def add_comment_at(self, pno: int, p: QPointF):
+        t = self._comment_text(tr("Nuovo commento"))
+        if t is None or not t.strip():
+            return None
+        return self.guard(self.pdf.add_comment, pno, (p.x(), p.y()), t)
+
+    def edit_comment(self, pno: int, xref: int) -> None:
+        info = self.pdf.annot_info(pno, xref)
+        if not info:
+            return
+        t = self._comment_text(tr("Modifica commento"), info.text)
+        if t is None:
+            return
+        if not t.strip():                                  # testo svuotato: il commento viene eliminato
+            self.delete_selection() if self.view.sel_xref == xref else self.pdf.delete_annot(pno, xref)
+            self.changed([pno])
+            return
+        nx = self.guard(self.pdf.set_props, pno, xref, text=t)
+        self.changed([pno])
+        if nx is not None:
+            self.view.select(pno, nx)
+
     def add_text_box(self, pno: int, rect: fitz.Rect):
         st = self.styles["text"]
-        d = TextDialog(self, tr("Casella di testo"), "", st.get("fontsize", 12), st.get("fontname", "helv"), st["pen"], st.get("fill"))
+        d = TextDialog(self, tr("Casella di testo"), "", st.get("fontsize", 12), st.get("fontname", "helv"), st["pen"], st.get("fill"),
+                       style=st.get("style", ""))
         if d.exec() != TextDialog.Accepted or not d.values()["text"].strip():
             return None
         v = d.values()
-        st.update({"pen": v["color"], "fill": v["fill"], "fontsize": v["fontsize"], "fontname": v["fontname"]})
-        return self.guard(self.pdf.add_text, pno, rect, v["text"], v["fontsize"], v["fontname"], v["color"], v["fill"], st.get("width", 0))
+        st.update({"pen": v["color"], "fill": v["fill"], "fontsize": v["fontsize"], "fontname": v["fontname"], "style": v["style"]})
+        return self.guard(self.pdf.add_text, pno, rect, v["text"], v["fontsize"], v["fontname"], v["color"], v["fill"], st.get("width", 0),
+                          v["style"])
 
     def edit_text_at(self, pno: int, p: QPointF) -> None:
         blk = self.pdf.text_block_at(pno, (p.x(), p.y()))
@@ -1731,7 +1813,8 @@ class MainWindow(QMainWindow):
         if d.exec() != TextDialog.Accepted:
             return
         v = d.values()
-        if self.guard(self.pdf.replace_text_block, pno, blk["rect"], v["text"], v["fontsize"], v["fontname"], v["color"]) is None:
+        if self.guard(self.pdf.replace_text_block, pno, blk["rect"], v["text"], v["fontsize"], v["fontname"], v["color"],
+                      None, v["style"]) is None:
             pass
         self.changed([pno])
         self.msg(tr("Testo sostituito. Il vecchio testo è stato rimosso dal documento."))
@@ -1799,7 +1882,7 @@ class MainWindow(QMainWindow):
         if not info:
             return
         style = {"pen": info.stroke or (0, 0, 0), "fill": info.fill, "width": info.width, "opacity": info.opacity,
-                 "fontsize": info.fontsize, "fontname": info.fontname}
+                 "fontsize": info.fontsize, "fontname": info.fontname, "style": info.style}
         if info.type == T_FREETEXT:
             style["pen"] = info.text_color
         self.props.load(style)
@@ -1814,7 +1897,7 @@ class MainWindow(QMainWindow):
                 m["stroke"] = kw["stroke"]
             if "fill" in kw:
                 m["fill"] = kw["fill"]
-            for k in ("width", "opacity", "fontsize", "fontname"):
+            for k in ("width", "opacity", "fontsize", "fontname", "style"):
                 if k in kw:
                     m[k] = kw[k]
             info = self.pdf.annot_info(sel_p, sel_x)
@@ -1903,16 +1986,46 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, tr("Campo firma"), tr("Si aprirà la finestra di firma digitale: la firma sarà inserita in questo campo."))
         self.sign_digital(field=(pno, f))
 
+    def _tool_for_annot(self, pno: int, info) -> str:
+        t = info.type
+        if t == T_LINE:
+            a = self.pdf.doc[pno]
+            for an in a.annots(types=[T_LINE]) or []:
+                if an.xref == info.xref:
+                    return "arrow" if tuple(an.line_ends or (0, 0))[1] not in (0, None) else "line"
+            return "line"
+        if t == T_INK:
+            return "highlighter" if info.opacity < 0.99 else "pen"
+        return {T_FREETEXT: "text", T_NOTE: "comment", T_SQUARE: "rect", T_CIRCLE: "ellipse", T_HIGHLIGHT: "hl",
+                T_UNDERLINE: "ul", T_STRIKE: "st", T_STAMP: "editobj", T_REDACT: "redact"}.get(t, "select")
+
     def on_double(self, pno: int, xref: int) -> None:
+        """Doppio clic con lo strumento Seleziona: passa allo strumento adatto all'oggetto (e ne mostra le proprietà)."""
+        info = self.pdf.annot_info(pno, xref)
+        if not info:
+            return
+        tool = self._tool_for_annot(pno, info)
+        if tool != "select" and self.tool == "select":
+            self.set_tool(tool)
+            self.view.select(pno, xref)               # set_tool azzera la selezione: l'oggetto resta selezionato e le sue proprietà visibili
+        if info.type == T_NOTE:
+            self.edit_comment(pno, xref)
+        elif info.type == T_STAMP:
+            self.image_properties(pno, {"kind": "annot", "xref": xref})
+        elif info.type == T_FREETEXT:
+            self.edit_text_annot(pno, xref)
+
+    def edit_text_annot(self, pno: int, xref: int) -> None:
         info = self.pdf.annot_info(pno, xref)
         if not info or info.type != T_FREETEXT:
             return
-        d = TextDialog(self, tr("Modifica casella di testo"), info.text, info.fontsize, info.fontname, info.text_color, info.fill)
+        d = TextDialog(self, tr("Modifica casella di testo"), info.text, info.fontsize, info.fontname, info.text_color, info.fill,
+                       style=info.style)
         if d.exec() != TextDialog.Accepted:
             return
         v = d.values()
         nx = self.guard(self.pdf.set_props, pno, xref, text=v["text"], fontsize=v["fontsize"], fontname=v["fontname"],
-                        text_color=v["color"], fill=v["fill"])
+                        text_color=v["color"], fill=v["fill"], style=v["style"])
         self.changed([pno])
         if nx is not None:
             self.view.select(pno, nx)
@@ -1941,6 +2054,15 @@ class MainWindow(QMainWindow):
             self.view.select_content(pno, new)
 
     def on_content_double(self, pno: int, obj: dict) -> None:
+        if self.tool == "select":                      # doppio clic con Seleziona: strumento adatto al tipo di oggetto
+            if obj["kind"] == "text":
+                self.set_tool("edittext")
+            else:
+                self.set_tool("editobj")
+                self.view.select_content(pno, obj)
+                if obj["kind"] == "image":
+                    self.image_properties(pno, {"kind": "content", "obj": obj})
+                return
         self.edit_text_block(pno, obj)
 
     def delete_selection(self) -> None:

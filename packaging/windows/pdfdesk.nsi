@@ -1,6 +1,6 @@
 ; PDFDesk — Guido Cauli <guido.cauli@gmail.com>
 ; Installer per Windows (NSIS). Installa, AGGIORNA una versione precedente (stessa cartella, stessi collegamenti) e si disinstalla.
-; Compilazione: makensis -DVERSION=0.7.4 -DEXE=..\..\dist-wine\pdfdesk.exe -DOUTFILE=pdfdesk-0.7.4-windows-x86_64-setup.exe pdfdesk.nsi
+; Compilazione: makensis -DVERSION=0.7.5 -DEXE=..\..\dist-wine\pdfdesk.exe -DOUTFILE=pdfdesk-0.7.5-windows-x86_64-setup.exe pdfdesk.nsi
 ; Opzioni da riga di comando:  /S (silenzioso)   /D=C:\percorso (cartella, ultimo parametro)
 
 Unicode true

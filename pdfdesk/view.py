@@ -6,9 +6,9 @@ from typing import Optional
 
 import pymupdf as fitz
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (QBrush, QColor, QImage, QKeySequence, QPainter, QPainterPath, QPen, QPixmap,
-                           QTransform)
+                           QTransform, QCursor, QGuiApplication)
 from PySide6.QtWidgets import (QApplication, QGraphicsItem, QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsRectItem,
                                QGraphicsScene, QGraphicsView)
 
@@ -21,7 +21,7 @@ HANDLES = ("nw", "n", "ne", "e", "se", "s", "sw", "w")
 
 TEXT_FLOW_TOOLS = {"hl", "ul", "st", "textsel"}
 DRAG_RECT_TOOLS = {"rect", "ellipse", "text", "redact", "hl", "ul", "st", "textsel", "image", "sign", "sigbox", "grab"}
-CLICK_TOOLS = {"edittext", "eraser", "form"}
+CLICK_TOOLS = {"edittext", "eraser", "form", "comment"}
 
 
 def pix_to_qimage(pm) -> QImage:
@@ -29,6 +29,56 @@ def pix_to_qimage(pm) -> QImage:
         pm = fitz.Pixmap(fitz.csRGB, fitz.Pixmap(pm, 0) if pm.alpha else pm)
     fmt = QImage.Format_RGBA8888 if pm.alpha else QImage.Format_RGB888
     return QImage(pm.samples, pm.width, pm.height, pm.stride, fmt).copy()
+
+
+def _outlined(p: QPainter, path: QPainterPath, col: QColor, w: float = 1.4) -> None:
+    """Traccia con alone bianco: il cursore resta leggibile su qualsiasi sfondo."""
+    p.setPen(QPen(QColor(255, 255, 255), w + 2.4, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+    p.drawPath(path)
+    p.setPen(QPen(col, w, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+    p.drawPath(path)
+
+
+def _cursor_canvas(w: int, h: int):
+    """Pixmap trasparente per un cursore, a risoluzione piena sugli schermi HiDPI/Retina: si disegna in coordinate logiche."""
+    scr = QGuiApplication.primaryScreen()
+    dpr = max(1.0, scr.devicePixelRatio() if scr else 1.0)
+    pm = QPixmap(int(round(w * dpr)), int(round(h * dpr)))
+    pm.setDevicePixelRatio(dpr)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    return pm, p
+
+
+def sign_cursor() -> QCursor:
+    """Mirino con accanto uno scarabocchio di firma: indica che si è in modalità firma."""
+    pm, p = _cursor_canvas(44, 44)
+    cross = QPainterPath()
+    for a, b in (((14, 3), (14, 11)), ((14, 17), (14, 25)), ((3, 14), (11, 14)), ((17, 14), (25, 14))):
+        cross.moveTo(*a); cross.lineTo(*b)
+    _outlined(p, cross, QColor(0, 0, 0))
+    sig = QPainterPath(QPointF(23, 38))
+    sig.cubicTo(25, 27, 29, 27, 28, 34)
+    sig.cubicTo(27, 38, 31, 38, 33, 31)
+    sig.cubicTo(34, 28, 36, 36, 41, 30)
+    _outlined(p, sig, QColor(10, 20, 150), 1.8)
+    p.end()
+    return QCursor(pm, 14, 14)
+
+
+def rotate_cursor() -> QCursor:
+    """Freccia circolare: modalità rotazione."""
+    pm, p = _cursor_canvas(32, 32)
+    arc = QPainterPath()
+    arc.arcMoveTo(QRectF(7, 7, 18, 18), 40)
+    arc.arcTo(QRectF(7, 7, 18, 18), 40, 270)
+    _outlined(p, arc, QColor(0, 0, 0), 1.8)
+    head = QPainterPath(QPointF(20, 3)); head.lineTo(QPointF(24.5, 9.5)); head.lineTo(QPointF(16.5, 10.5)); head.closeSubpath()
+    p.setPen(QPen(QColor(255, 255, 255), 2.0)); p.setBrush(QColor(255, 255, 255)); p.drawPath(head)
+    p.setPen(Qt.NoPen); p.setBrush(QColor(0, 0, 0)); p.drawPath(head)
+    p.end()
+    return QCursor(pm, 16, 16)
 
 
 class SelectionBox(QGraphicsItem):
@@ -39,15 +89,33 @@ class SelectionBox(QGraphicsItem):
         self.rect = QRectF()
         self.handle_px = 5.0
         self.show_handles = True
+        self.rotate_mode = False                  # modalità rotazione: maniglie tonde e riquadro ruotato durante il trascinamento
+        self.angle = 0.0
         self.setZValue(50)
 
     def boundingRect(self) -> QRectF:
-        m = 20.0
+        m = 20.0 + (max(self.rect.width(), self.rect.height()) if self.rotate_mode else 0.0)
         return self.rect.adjusted(-m, -m, m, m)
 
     def paint(self, p: QPainter, opt, widget=None) -> None:
         pen = QPen(QColor(30, 120, 230), 1.0, Qt.DashLine)
         pen.setCosmetic(True)
+        if self.rotate_mode:
+            c = self.rect.center()
+            p.save()
+            p.translate(c); p.rotate(self.angle); p.translate(-c)
+            pen = QPen(QColor(230, 120, 20), 1.5, Qt.DashLine)
+            pen.setCosmetic(True)
+            p.setPen(pen); p.setBrush(Qt.NoBrush)
+            p.drawRect(self.rect)
+            p.setPen(QPen(QColor(230, 120, 20), 1.0)); p.setBrush(QBrush(Qt.white))
+            s = self.handle_size() * 1.2
+            for pt in (self.rect.topLeft(), self.rect.topRight(), self.rect.bottomLeft(), self.rect.bottomRight()):
+                p.drawEllipse(pt, s, s)
+            p.setBrush(QBrush(QColor(230, 120, 20)))
+            p.drawEllipse(c, s * 0.5, s * 0.5)
+            p.restore()
+            return
         p.setPen(pen)
         p.setBrush(Qt.NoBrush)
         p.drawRect(self.rect)
@@ -68,13 +136,20 @@ class SelectionBox(QGraphicsItem):
         return {"nw": r.topLeft(), "n": QPointF(cx, r.top()), "ne": r.topRight(), "e": QPointF(r.right(), cy),
                 "se": r.bottomRight(), "s": QPointF(cx, r.bottom()), "sw": r.bottomLeft(), "w": QPointF(r.left(), cy)}
 
+    def set_rotate(self, on: bool) -> None:
+        if on != self.rotate_mode:
+            self.prepareGeometryChange()         # il riquadro di ingombro cambia: va sempre annunciato a Qt
+            self.rotate_mode = on
+            self.angle = 0.0
+            self.update()
+
     def set_rect(self, r: QRectF) -> None:
         self.prepareGeometryChange()
         self.rect = QRectF(r)
         self.update()
 
     def hit_handle(self, pos: QPointF) -> Optional[str]:
-        if not self.show_handles:
+        if not self.show_handles or self.rotate_mode:
             return None
         s = self.handle_size() * 1.6
         for name, pt in self.handle_points().items():
@@ -115,6 +190,8 @@ class DocView(QGraphicsView):
     currentPageChanged = Signal(int)
     zoomChanged = Signal(float)
     contextRequested = Signal(int, QPointF, object)    # pagina, punto (coordinate pagina), posizione globale del menu
+    imageRotateRequested = Signal(int, float)          # pagina, gradi (in senso orario) della rotazione fatta col mouse
+    rotateModeChanged = Signal(bool)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -142,6 +219,8 @@ class DocView(QGraphicsView):
         self.grid_snap, self.grid_show, self.grid = False, False, (14.17, 14.17)
         self.sel_content: Optional[dict] = None
         self._ghost: Optional[QGraphicsPixmapItem] = None
+        self._sign_cur = sign_cursor()
+        self._rot_cur = rotate_cursor()
         self._drag = None
         self._preview: Optional[QGraphicsItem] = None
         self.multi: list = []                      # selezione multipla: voci {"kind": "annot"|"content", ...}
@@ -403,6 +482,11 @@ class DocView(QGraphicsView):
         super().resizeEvent(e)
         self._schedule()
 
+    def event(self, e) -> bool:
+        if e.type() == QEvent.DevicePixelRatioChange:        # finestra trascinata su uno schermo con densità diversa: ridisegna nitido
+            self._schedule()
+        return super().event(e)
+
     # ------------------------------------------------------------------ strumenti
     def set_tool(self, tool: str) -> None:
         self.tool = tool
@@ -413,10 +497,45 @@ class DocView(QGraphicsView):
         else:
             self.setDragMode(QGraphicsView.NoDrag)
             cur = Qt.ArrowCursor if tool in ("select", "editobj") else (Qt.IBeamCursor if tool in ("textsel", "text", "hl", "ul", "st", "edittext") else Qt.CrossCursor)
-            self.viewport().setCursor(cur)
+            self.viewport().setCursor(self._sign_cur if tool == "sign" else cur)   # firma: mirino + segno di firma
         if tool != "select":
             self._sel.hide_handles = True
         self.clear_selection()
+
+    # ------------------------------------------------------------------ rotazione col mouse
+    def _sel_is_image(self) -> bool:
+        if self.multi or self.sel_page < 0:
+            return False
+        if self.sel_content is not None:
+            return self.sel_content.get("kind") == "image"
+        return self.sel_info is not None and self.sel_info.type == 13
+
+    def set_rotate_mode(self, on: bool) -> None:
+        on = bool(on) and self._sel_is_image() and self._sel.isVisible()
+        if on == self._sel.rotate_mode:
+            return
+        self._sel.set_rotate(on)
+        self.viewport().setCursor(self._rot_cur if on else Qt.ArrowCursor)
+        self.rotateModeChanged.emit(on)
+
+    def _note_tip(self, sp: QPointF) -> None:
+        """Passando sopra l'icona di un commento ne mostra il testo."""
+        tip = ""
+        pno = self._page_at(sp, nearest=False)
+        if pno >= 0 and self.doc:
+            l = self._local(pno, sp, clamp=False)
+            x = self.doc.annot_at(pno, (l.x(), l.y()))
+            if x is not None:
+                info = self.doc.annot_info(pno, x)
+                if info is not None and info.type == 0:         # PDF_ANNOT_TEXT
+                    tip = info.text
+        if self.viewport().toolTip() != tip:
+            self.viewport().setToolTip(tip)
+
+    def _rot_hit(self, sp: QPointF) -> bool:
+        r = self._sel.rect
+        m = max(r.width(), r.height()) * 0.6 + 30
+        return r.adjusted(-m, -m, m, m).contains(sp)
 
     def _page_at(self, sp: QPointF, nearest: bool = True) -> int:
         for i, r in enumerate(self.page_rects):
@@ -435,6 +554,7 @@ class DocView(QGraphicsView):
 
     # ------------------------------------------------------------------ selezione
     def select(self, pno: int, xref: int) -> None:
+        self._sel.set_rotate(False)
         self._clear_multi_boxes(); self.multi = []
         grp = self.doc.annot_group(pno, xref) if self.doc and xref >= 0 else [xref]
         if len(grp) > 1:                                  # un gruppo si seleziona e si sposta tutto insieme
@@ -560,6 +680,7 @@ class DocView(QGraphicsView):
 
     def clear_selection(self) -> None:
         had = self.sel_page >= 0
+        self._sel.set_rotate(False)
         self.sel_page, self.sel_xref, self.sel_info, self.sel_content = -1, -1, None, None
         self._clear_multi_boxes()
         self.multi = []
@@ -570,6 +691,7 @@ class DocView(QGraphicsView):
 
     def select_content(self, pno: int, obj: dict) -> None:
         """Seleziona un oggetto del contenuto della pagina (testo, immagine, grafica) con il suo riquadro."""
+        self._sel.set_rotate(False)
         self.sel_page, self.sel_xref, self.sel_info, self.sel_content = pno, -2, None, obj
         r = obj["rect"]
         o = self.page_rects[pno].topLeft()
@@ -579,6 +701,15 @@ class DocView(QGraphicsView):
         self.contentSelected.emit(pno, obj)
 
     def _press_content(self, sp: QPointF, pno: int) -> None:
+        if self._sel.rotate_mode:
+            if self._rot_hit(sp):
+                c = self._sel.rect.center()
+                import math
+                self._drag = {"kind": "rotate", "page": self.sel_page, "center": c,
+                              "a0": math.degrees(math.atan2(sp.y() - c.y(), sp.x() - c.x())), "angle": 0.0}
+                self._make_ghost()
+                return
+            self.set_rotate_mode(False)
         if self._sel.isVisible() and self.sel_content is not None:
             h = self._sel.hit_handle(sp)
             if h:
@@ -586,7 +717,7 @@ class DocView(QGraphicsView):
                 self._make_ghost()
                 return
             if self._sel.rect.contains(sp):
-                self._drag = {"kind": "move", "start": sp, "orig": QRectF(self._sel.rect), "page": self.sel_page, "moved": False}
+                self._drag = {"kind": "move", "start": sp, "orig": QRectF(self._sel.rect), "page": self.sel_page, "moved": False, "again": True}
                 self._make_ghost()
                 return
         local = self._local(pno, sp, clamp=False)
@@ -657,6 +788,18 @@ class DocView(QGraphicsView):
         self._ghost = g
         self._ghost_src = QRectF(0, 0, crop.width(), crop.height())
         self._place_ghost(self._sel.rect)
+
+    def _rotate_ghost(self, angle: float) -> None:
+        if self._ghost is None:
+            return
+        r = self._sel.rect
+        c = r.center()
+        t = QTransform()
+        t.translate(c.x(), c.y()); t.rotate(angle); t.translate(-c.x(), -c.y())
+        t.translate(r.left(), r.top())
+        t.scale(r.width() / max(self._ghost_src.width(), 1), r.height() / max(self._ghost_src.height(), 1))
+        self._ghost.setPos(0, 0)
+        self._ghost.setTransform(t)
 
     def _place_ghost(self, r: QRectF) -> None:
         if self._ghost is None:
@@ -766,13 +909,22 @@ class DocView(QGraphicsView):
             self.pointClicked.emit(t, pno, self._local(pno, sp))
 
     def _press_select(self, sp: QPointF, pno: int) -> None:
+        if self._sel.rotate_mode:
+            if self._rot_hit(sp):
+                c = self._sel.rect.center()
+                import math
+                self._drag = {"kind": "rotate", "page": self.sel_page, "center": c,
+                              "a0": math.degrees(math.atan2(sp.y() - c.y(), sp.x() - c.x())), "angle": 0.0}
+                self._make_ghost()
+                return
+            self.set_rotate_mode(False)
         h = self._sel.hit_handle(sp) if self._sel.isVisible() else None
         if h and self.sel_info and self.sel_info.resizable:
             self._drag = {"kind": "resize", "handle": h, "start": sp, "orig": QRectF(self._sel.rect), "page": self.sel_page}
             self._make_ghost()
             return
         if self._sel.isVisible() and self._sel.rect.contains(sp) and self.sel_info and self.sel_info.movable:
-            self._drag = {"kind": "move", "start": sp, "orig": QRectF(self._sel.rect), "page": self.sel_page, "moved": False}
+            self._drag = {"kind": "move", "start": sp, "orig": QRectF(self._sel.rect), "page": self.sel_page, "moved": False, "again": True}
             self._make_ghost()
             return
         local = self._local(pno, sp, clamp=False)
@@ -799,6 +951,12 @@ class DocView(QGraphicsView):
             return
         d = self._drag
         if d is None:
+            if self._sel.rotate_mode and self.tool in ("select", "editobj"):
+                sp = self.mapToScene(e.position().toPoint())
+                self.viewport().setCursor(self._rot_cur if self._rot_hit(sp) else Qt.ArrowCursor)
+                return super().mouseMoveEvent(e)
+            if self.tool in ("select", "comment", "editobj") and not self._sel.rotate_mode:
+                self._note_tip(self.mapToScene(e.position().toPoint()))
             if self.tool in ("select", "editobj") and self._sel.isVisible():
                 sp = self.mapToScene(e.position().toPoint())
                 h = self._sel.hit_handle(sp)
@@ -844,6 +1002,17 @@ class DocView(QGraphicsView):
         elif k == "band":
             d["b"] = self._clamp(d["page"], sp)
             self._preview.setRect(QRectF(d["a"], d["b"]).normalized())
+        elif k == "rotate":
+            import math
+            c = d["center"]
+            a = math.degrees(math.atan2(sp.y() - c.y(), sp.x() - c.x())) - d["a0"]
+            a = (a + 180.0) % 360.0 - 180.0
+            if e.modifiers() & Qt.ShiftModifier:
+                a = round(a / 15.0) * 15.0              # con Maiusc a scatti di 15°
+            d["angle"] = a
+            self._sel.angle = a
+            self._sel.update()
+            self._rotate_ghost(a)
         elif k == "mmove":
             delta = sp - d["start"]
             if not d["moved"] and delta.manhattanLength() * self.transform().m11() < 3:
@@ -930,6 +1099,14 @@ class DocView(QGraphicsView):
                             have.add(self._item_key(it)); items.append(it)
             self._apply_items(pno, items)
             return
+        if k == "rotate":
+            self._remove_ghost()
+            a = d.get("angle", 0.0)
+            self._sel.angle = 0.0
+            self._sel.update()
+            if abs(a) >= 0.5:
+                self.imageRotateRequested.emit(pno, float(a))
+            return
         if k == "mmove":
             dd = d.get("delta")
             if d.get("moved") and dd is not None and (abs(dd.x()) > 1e-6 or abs(dd.y()) > 1e-6):
@@ -965,6 +1142,8 @@ class DocView(QGraphicsView):
                 self.transformRequested.emit(d["page"], self.sel_xref, r, k == "resize")
             else:
                 self._sel.set_rect(d["orig"])
+                if k == "move" and d.get("again") and not d.get("moved") and self._sel_is_image():
+                    self.set_rotate_mode(not self._sel.rotate_mode)      # clic su un'immagine già selezionata: modalità rotazione
 
     def mouseDoubleClickEvent(self, e) -> None:
         if self.tool == "editobj" and self.doc and e.button() == Qt.LeftButton:
@@ -985,6 +1164,10 @@ class DocView(QGraphicsView):
                 if x is not None:
                     self.annotDoubleClicked.emit(pno, x)
                     return
+                obj = self.doc.content_at(pno, (l.x(), l.y()))      # testo/immagine/grafica già nel PDF: si passa allo strumento apposito
+                if obj is not None:
+                    self.contentDoubleClicked.emit(pno, obj)
+                    return
         super().mouseDoubleClickEvent(e)
 
     def _remove_preview(self) -> None:
@@ -994,6 +1177,9 @@ class DocView(QGraphicsView):
 
     def _cancel_drag(self) -> None:
         self._drag = None
+        if self._sel.angle:
+            self._sel.angle = 0.0
+            self._sel.update()
         self._remove_preview()
         self._remove_ghost()
 

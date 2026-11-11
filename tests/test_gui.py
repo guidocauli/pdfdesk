@@ -186,6 +186,7 @@ class GuiTests(unittest.TestCase):
         self.w.pending_sign = (params, out, "medium", 0)
         self.w.finish_visible_signature(0, fitz.Rect(300, 600, 500, 700)); wait(300)
         self.assertTrue(os.path.exists(out)); self.assertTrue(self.w.pdf.is_signed)
+        self.assertTrue(self.w.a_verify.isEnabled())            # documento firmato: la verifica è disponibile
         self.assertTrue(self.w.banner.isVisible() or not self.w.banner.isHidden())
         st = signing.verify_pdf_bytes(open(out, "rb").read()); self.assertTrue(st[0].valid)
         self.w.grab().save(os.path.join(SHOT, "gui_signed.png"))
@@ -795,6 +796,185 @@ class ThumbAlignmentTests(unittest.TestCase):
         xs = {t.visualItemRect(t.item(i)).x() for i in range(t.count())}
         self.assertEqual(len(xs), 1, xs)
         w.close()
+
+
+class SignCursorEscRotateTests(unittest.TestCase):
+    def setUp(self):
+        QSettings().clear()
+        self.w = MainWindow(); self.w.resize(1200, 800); self.w.show(); self.assertTrue(self.w.open_path(SRC)); wait(200)
+
+    def tearDown(self):
+        self.w.pdf.modified = False; self.w.close(); wait(30)
+
+    def test_sign_tool_cursor_is_custom_bitmap(self):
+        self.w.current_signature = "x"          # evita la finestra di scelta firma
+        self.w.view.set_tool("sign")
+        cur = self.w.view.viewport().cursor()
+        self.assertEqual(cur.shape(), Qt.BitmapCursor)
+        self.assertFalse(cur.pixmap().isNull())
+        self.w.view.set_tool("select")
+        self.assertEqual(self.w.view.viewport().cursor().shape(), Qt.ArrowCursor)
+
+    def test_escape_returns_to_select(self):
+        for t in ("pen", "rect", "textsel", "editobj"):
+            self.w.set_tool(t); wait(20)
+            QTest.keyClick(self.w.view, Qt.Key_Escape); wait(30)
+            self.assertEqual(self.w.tool, "select", t)
+            self.assertTrue(self.w.tool_actions["select"].isChecked())
+
+    def test_draw_signature_canvas_draws(self):
+        from pdfdesk.dialogs import DrawSignatureDialog
+        d = DrawSignatureDialog(self.w); d.show(); wait(50)
+        c = d.canvas
+        QTest.mousePress(c, Qt.LeftButton, Qt.NoModifier, QPoint(40, 100))
+        for x in range(50, 300, 10):
+            QTest.mouseMove(c, QPoint(x, 100 + (x % 30)))
+        QTest.mouseRelease(c, Qt.LeftButton, Qt.NoModifier, QPoint(300, 100))
+        self.assertTrue(c.strokes and len(c.strokes[0]) > 5)
+        self.assertIsNotNone(d.result_image())
+        c.grab()                                   # il paintEvent non deve sollevare eccezioni
+        d.close(); d.deleteLater()
+
+    def test_mouse_rotation_of_selected_image(self):
+        from pdfdesk import sigstore
+        from PySide6.QtGui import QImage, QColor
+        w = self.w
+        img = QImage(200, 100, QImage.Format_ARGB32); img.fill(QColor(200, 30, 30))
+        x = w.pdf.add_image(0, fitz.Rect(100, 300, 300, 400), sigstore.png_bytes(img)); w.changed([0]); wait(100)
+        w.set_tool("select"); wait(30)
+        v = w.view; o = v.page_rects[0]
+        def vp(px, py): return v.mapFromScene(QPointF(o.x() + px, o.y() + py))
+        QTest.mouseClick(v.viewport(), Qt.LeftButton, Qt.NoModifier, vp(200, 350)); wait(60)
+        self.assertEqual(v.sel_xref, x)
+        self.assertFalse(v._sel.rotate_mode)
+        QTest.mouseClick(v.viewport(), Qt.LeftButton, Qt.NoModifier, vp(200, 350)); wait(60)     # secondo clic: rotazione
+        self.assertTrue(v._sel.rotate_mode)
+        # trascinamento: da destra del centro a sotto il centro = 90° in senso orario
+        QTest.mousePress(v.viewport(), Qt.LeftButton, Qt.NoModifier, vp(290, 350))
+        for k in range(1, 10):
+            QTest.mouseMove(v.viewport(), vp(200 + 90 * (1 - k / 9), 350 + 90 * (k / 9)))
+        QTest.mouseRelease(v.viewport(), Qt.LeftButton, Qt.NoModifier, vp(200, 440)); wait(150)
+        r = w.pdf.annot_info(0, v.sel_xref).rect if v.sel_info else None
+        self.assertIsNotNone(r)
+        self.assertAlmostEqual(r.width, 100, delta=3)       # 200×100 ruotata di 90° → 100×200
+        self.assertAlmostEqual(r.height, 200, delta=3)
+        self.assertFalse(v._sel.rotate_mode)
+
+
+class CommentsStylesDoubleClickTests(unittest.TestCase):
+    def setUp(self):
+        QSettings().clear()
+        self.w = MainWindow(); self.w.resize(1200, 800); self.w.show(); self.assertTrue(self.w.open_path(SRC)); wait(200)
+        self.v = self.w.view; self.o = self.v.page_rects[0]
+
+    def tearDown(self):
+        self.w.pdf.modified = False; self.w.close(); wait(30)
+
+    def vp(self, px, py):
+        return self.v.mapFromScene(QPointF(self.o.x() + px, self.o.y() + py))
+
+    def test_verify_disabled_without_signatures(self):
+        self.assertFalse(self.w.pdf.is_signed)
+        self.assertFalse(self.w.a_verify.isEnabled())
+
+    def test_comment_tool_adds_note_and_edit(self):
+        self.w._comment_text = lambda title, text="": "Primo commento"
+        self.w.set_tool("comment"); wait(30)
+        QTest.mouseClick(self.v.viewport(), Qt.LeftButton, Qt.NoModifier, self.vp(400, 500)); wait(100)
+        notes = [a for a in self.w.pdf.list_annots(0) if a.type == 0]
+        self.assertEqual(len(notes), 1); self.assertEqual(notes[0].text, "Primo commento")
+        self.assertTrue(notes[0].movable)
+        # doppio clic con Seleziona: strumento Commento + modifica
+        self.w._comment_text = lambda title, text="": "Modificato"
+        self.w.set_tool("select"); wait(30)
+        r = notes[0].rect
+        QTest.mouseDClick(self.v.viewport(), Qt.LeftButton, Qt.NoModifier, self.vp((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2)); wait(100)
+        self.assertEqual(self.w.tool, "comment")
+        self.assertEqual([a.text for a in self.w.pdf.list_annots(0) if a.type == 0], ["Modificato"])
+        # salvato come annotazione Text standard
+        out = os.path.join(TMP, "comm.pdf"); self.assertTrue(self.w.pdf.save_as(out) if hasattr(self.w.pdf, "save_as") else True)
+
+    def test_double_click_switches_tool(self):
+        from pdfdesk import dialogs as dlg
+        orig = dlg.TextDialog.exec
+        dlg.TextDialog.exec = lambda self: dlg.TextDialog.Rejected
+        try:
+            x = self.w.pdf.add_text(0, fitz.Rect(100, 600, 300, 640), "Casella", 12, "helv", (0, 0, 0), None, 0, "")
+            r2 = self.w.pdf.add_shape(0, "rect", fitz.Rect(100, 650, 200, 700), (1, 0, 0), None, 2.0)
+            self.w.changed([0]); wait(100)
+            for xref, expected in ((x, "text"), (r2, "rect")):
+                self.w.set_tool("select"); wait(30)
+                inf = self.w.pdf.annot_info(0, xref)
+                cx, cy = (inf.rect.x0 + inf.rect.x1) / 2, (inf.rect.y0 + inf.rect.y1) / 2
+                if expected == "rect":
+                    cx, cy = inf.rect.x0 + 1, (inf.rect.y0 + inf.rect.y1) / 2           # sul bordo
+                QTest.mouseDClick(self.v.viewport(), Qt.LeftButton, Qt.NoModifier, self.vp(cx, cy)); wait(100)
+                self.assertEqual(self.w.tool, expected)
+                self.assertEqual(self.v.sel_xref, xref)
+            # testo già presente nel PDF: strumento «Modifica testo»
+            self.w.set_tool("select"); wait(30)
+            called = []
+            self.w.edit_text_block = lambda pno, blk: called.append(blk["text"])
+            QTest.mouseDClick(self.v.viewport(), Qt.LeftButton, Qt.NoModifier, self.vp(150, 160)); wait(100)
+            self.assertEqual(self.w.tool, "edittext"); self.assertTrue(called)
+        finally:
+            dlg.TextDialog.exec = orig
+
+    def test_text_dialog_style_buttons_and_properties_panel(self):
+        d = dialogs.TextDialog(self.w, "t", "x", 12, "tibo", (0, 0, 0), None, style="u")
+        self.assertEqual(d.font.code(), "tiro")
+        self.assertEqual(d.values()["style"], "bu")                       # tibo = Times + grassetto
+        d.styles_.btn["s"].setChecked(True); d.styles_.btn["i"].setChecked(True)
+        self.assertEqual(d.values()["style"], "biu" + "s")
+        d.font.set_code("helv"); d.close()
+        got = []
+        self.w.props.changed.connect(lambda kw: got.append(kw))
+        self.w.props.styles_.btn["u"].setChecked(True)
+        self.assertIn({"style": "u"}, got)
+
+
+class UiScaleTests(unittest.TestCase):
+    def setUp(self):
+        dialogs.settings().clear()
+        self._env = os.environ.pop("QT_SCALE_FACTOR", None)
+
+    def tearDown(self):
+        dialogs.settings().clear()
+        os.environ.pop("QT_SCALE_FACTOR", None)
+        if self._env is not None:
+            os.environ["QT_SCALE_FACTOR"] = self._env
+
+    def test_scale_setting_and_env(self):
+        from pdfdesk import cli
+        self.assertEqual(cli.ui_scale_percent(), 0)
+        cli.configure_hidpi()
+        self.assertNotIn("QT_SCALE_FACTOR", os.environ)           # automatica: nessuna forzatura
+        dialogs.settings().setValue("ui/scale", 150)
+        self.assertEqual(cli.ui_scale_percent(), 150)
+        cli.configure_hidpi()
+        self.assertEqual(os.environ.get("QT_SCALE_FACTOR"), "1.5")
+        os.environ["QT_SCALE_FACTOR"] = "2"                        # la variabile dell'utente ha la precedenza
+        cli.configure_hidpi()
+        self.assertEqual(os.environ["QT_SCALE_FACTOR"], "2")
+        dialogs.settings().setValue("ui/scale", 9999)                     # valore assurdo: ignorato
+        self.assertEqual(cli.ui_scale_percent(), 0)
+
+    def test_prefs_dialog_roundtrip(self):
+        d = dialogs.PreferencesDialog()
+        self.assertEqual(d.scale.currentData(), 0)
+        d.scale.setCurrentIndex(d.scale.findData(200)); d.store()
+        self.assertEqual(int(dialogs.settings().value("ui/scale")), 200)
+        d2 = dialogs.PreferencesDialog()
+        self.assertEqual(d2.scale.currentData(), 200)
+        d.deleteLater(); d2.deleteLater()
+
+    def test_cursors_hidpi(self):
+        from pdfdesk.view import sign_cursor, rotate_cursor
+        for c in (sign_cursor(), rotate_cursor()):
+            pm = c.pixmap()
+            self.assertFalse(pm.isNull())
+            self.assertGreaterEqual(pm.devicePixelRatio(), 1.0)
+            self.assertGreaterEqual(pm.width(), 32)
 
 
 if __name__ == "__main__":

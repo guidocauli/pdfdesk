@@ -7,6 +7,7 @@ import os
 import math
 import re
 import shutil
+import sys
 import tempfile
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
@@ -89,6 +90,7 @@ T_STRIKE = fitz.PDF_ANNOT_STRIKE_OUT
 T_REDACT = fitz.PDF_ANNOT_REDACT
 T_STAMP = fitz.PDF_ANNOT_STAMP
 T_INK = fitz.PDF_ANNOT_INK
+T_NOTE = fitz.PDF_ANNOT_TEXT              # commento (nota adesiva): icona di dimensione fissa, si sposta ma non si ridimensiona
 
 RECT_TYPES = {T_FREETEXT, T_SQUARE, T_CIRCLE, T_STAMP, T_REDACT}   # set_rect supportato
 REBUILD_TYPES = {T_INK, T_LINE}                                     # ricostruiti con nuovi punti
@@ -117,6 +119,7 @@ class AnnotInfo:
     fontsize: float = 12.0
     fontname: str = "helv"
     text_color: Color = (0, 0, 0)
+    style: str = ""                       # lettere: b grassetto, i corsivo, u sottolineato, s barrato
     movable: bool = False
     resizable: bool = False
 
@@ -160,6 +163,23 @@ def _parse_da(da: str):
         if m:
             color = (float(m.group(1)),) * 3
     return fontname, size, color
+
+
+def release_memory(percent: int = 100) -> None:
+    """Restituisce memoria al sistema: svuota (in parte) la cache interna del motore PDF, che altrimenti resta piena anche
+    dopo la chiusura dei documenti (fino a ~256 MB), raccoglie i rifiuti di Python e, su Linux, riconsegna le pagine libere."""
+    try:
+        fitz.TOOLS.store_shrink(int(percent))
+    except Exception:
+        pass
+    import gc
+    gc.collect()
+    if sys.platform.startswith("linux"):
+        try:
+            import ctypes
+            ctypes.CDLL("libc.so.6").malloc_trim(0)
+        except Exception:
+            pass
 
 
 def _font_from_span(font: str, flags: int) -> str:
@@ -437,7 +457,7 @@ class PdfDocument:
         return a.xref
 
     def add_text(self, pno: int, rect, text: str, fontsize: float = 12, fontname: str = "helv",
-                 color: Color = (0, 0, 0), fill: Optional[Color] = None, border: float = 0.0) -> int:
+                 color: Color = (0, 0, 0), fill: Optional[Color] = None, border: float = 0.0, style: str = "") -> int:
         page = self.doc[pno]
         r = to_page_rect(page, rect)
         custom = fonts.is_custom(fontname)
@@ -446,15 +466,37 @@ class PdfDocument:
             path = fonts.resolve(fontname)
             if not path:
                 raise PdfError(tr("Font «{}» non disponibile: aggiungilo dalla libreria font.").format(fontname[1:]))
+        style = self._norm_style(style, custom)
         self._begin(tr("testo"))
-        a = page.add_freetext_annot(r, text, fontsize=float(fontsize), fontname="helv" if custom else fontname,
+        a = page.add_freetext_annot(r, text, fontsize=float(fontsize), fontname="helv" if custom else textbox.base_code(fontname),
                                     text_color=color, fill_color=fill, border_width=float(border),
                                     rotate=page.rotation)
         xref = a.xref
-        if custom:
-            self.doc.xref_set_key(xref, "PDFDeskFont", fitz.get_pdf_str(fontname[1:]))
+        self._set_font_keys(xref, fontname, style)
+        if custom or style:
             self._regen_custom(pno, xref)
         return xref
+
+    @staticmethod
+    def _norm_style(style: Optional[str], custom: bool = False) -> str:
+        """Lettere ammesse in ordine fisso; con un font TTF/OTF grassetto e corsivo non esistono (un solo file di font)."""
+        st = style or ""
+        return "".join(c for c in "bius" if c in st and not (custom and c in "bi"))
+
+    def _set_font_keys(self, xref: int, fontname: str, style: str) -> None:
+        if fonts.is_custom(fontname):
+            self.doc.xref_set_key(xref, "PDFDeskFont", fitz.get_pdf_str(fontname[1:]))
+        else:
+            self.doc.xref_set_key(xref, "PDFDeskFont", "null")
+        self.doc.xref_set_key(xref, "PDFDeskStyle", fitz.get_pdf_str(style) if style else "null")
+
+    def _style_of(self, xref: int) -> str:
+        t, v = self.doc.xref_get_key(xref, "PDFDeskStyle")
+        return v if t == "string" and v else ""
+
+    def _html_ap(self, xref: int) -> bool:
+        """True se l'aspetto della casella di testo è generato da textbox.build_ap (font TTF/OTF o stili)."""
+        return bool(self._custom_font(xref) or self._style_of(xref))
 
     # -- caselle di testo con font TTF/OTF: l'aspetto è un XObject generato da textbox.build_ap
     def _custom_font(self, xref: int) -> Optional[str]:
@@ -466,14 +508,30 @@ class PdfDocument:
         a = self._find(page, xref)
         info = self._info(page, a)
         name = self._custom_font(xref)
-        path = fonts.resolve("@" + name) if name else None
-        if not path:
-            raise PdfError(tr("Font «{}» non disponibile: aggiungilo dalla libreria font oppure scegli un altro carattere.").format(name))
+        path = None
+        if name:
+            path = fonts.resolve("@" + name)
+            if not path:
+                raise PdfError(tr("Font «{}» non disponibile: aggiungilo dalla libreria font oppure scegli un altro carattere.").format(name))
         rect = fitz.Rect(a.rect)
         rot = page.rotation
-        args = (rect.width, rect.height, info.text, path, info.fontsize, info.text_color, info.fill, info.width, rot)
+        base = textbox.base_code(_parse_da(self.doc.xref_get_key(xref, "DA")[1])[0])
+        args = (rect.width, rect.height, info.text, path, info.fontsize, info.text_color, info.fill, info.width, rot,
+                self._style_of(xref), base)
         ap = textbox.build_ap(self.doc, *args)           # invalida page/a: si rileggono
         self.doc.xref_set_key(xref, "AP", f"<< /N {ap} 0 R >>")
+
+    def add_comment(self, pno: int, point, text: str, author: str = "") -> int:
+        """Commento (annotazione «Text» standard, visibile in qualsiasi lettore PDF) con l'icona nel punto indicato."""
+        page = self.doc[pno]
+        pt = fitz.Point(point) * page.derotation_matrix
+        self._begin(tr("commento"))
+        a = page.add_text_annot(pt, text, icon="Comment")
+        a.set_colors(stroke=(1.0, 0.85, 0.0))
+        if author:
+            a.set_info(title=author)
+        a.update()
+        return a.xref
 
     def add_image(self, pno: int, rect, png_bytes: bytes, keep_ratio: bool = True) -> int:
         """Timbro con immagine (PNG con trasparenza supportata): firma olografica, logo, foto."""
@@ -942,29 +1000,64 @@ class PdfDocument:
         return True
 
     def replace_text_block(self, pno: int, rect, new_text: str, fontsize: float, fontname: str,
-                           color: Color, dest=None) -> None:
+                           color: Color, dest=None, style: str = "") -> None:
         """Sostituisce il testo di un blocco: rimuove il testo originale (solo testo) e scrive il nuovo
-        (in `dest`, se indicato: sposta/ridimensiona il blocco)."""
+        (in `dest`, se indicato: sposta/ridimensiona il blocco). `style`: b grassetto, i corsivo, u sottolineato, s barrato."""
         page = self.doc[pno]
+        custom = fonts.is_custom(fontname)
+        path = None
+        if custom:
+            path = fonts.resolve(fontname)
+            if not path:
+                raise PdfError(tr("Font «{}» non disponibile.").format(fontname[1:]))
+        if not custom:                                    # una variante (hebo, tiit…) vale come carattere base + stile
+            extra = ("b" if fontname.endswith(("bo", "bi")) else "") + ("i" if fontname.endswith(("it", "bi")) else "")
+            style = (style or "") + extra
+        style = self._norm_style(style, custom)
         self._begin(tr("modifica testo"))
         self._mark_permanent()
         self._erase(page, to_page_rect(page, rect), text=True)
         r = to_page_rect(page, dest if dest is not None else rect)
         size = float(fontsize)
-        kw = {}
-        if fonts.is_custom(fontname):
-            path = fonts.resolve(fontname)
-            if not path:
-                raise PdfError(tr("Font «{}» non disponibile.").format(fontname[1:]))
+        if custom:
             kw = {"fontname": "PdfdeskF", "fontfile": path}
         else:
-            kw = {"fontname": fontname}
+            base = textbox.base_code(fontname)
+            kw = {"fontname": textbox._VARIANT[base][(1 if "b" in style else 0) + (2 if "i" in style else 0)]}
+        if "u" in style or "s" in style:
+            self._insert_decorated(page, r, new_text, size, color, path, kw, style)
+            return
         while size >= 4:
             if page.insert_textbox(r, new_text, fontsize=size, color=color, **kw) >= 0:
                 return
             size -= 0.5
         page.insert_textbox(r + (0, 0, 0, 200), new_text, fontsize=4, color=color, **kw)
 
+    @staticmethod
+    def _insert_decorated(page: fitz.Page, r: fitz.Rect, text: str, size: float, color, path, kw: dict, style: str) -> None:
+        """Testo con sottolineato/barrato scritto direttamente nel contenuto della pagina (motore HTML)."""
+        import html
+        css = "body {margin: 0; overflow-wrap: anywhere;}"
+        arch = None
+        if path:
+            arch = fitz.Archive()
+            with open(path, "rb") as f:
+                arch.add(f.read(), "pdfdesk-font.ttf")
+            css = "@font-face {font-family: PdfdeskFont; src: url(pdfdesk-font.ttf);} " + css
+            family, bold, italic = "PdfdeskFont", False, False
+        else:
+            base = textbox.base_code(kw["fontname"])
+            family, bold, italic = textbox.FAMILY[base], "b" in style, "i" in style
+        body = "<br>".join(html.escape(l) for l in text.split("\n"))
+        col = "#%02x%02x%02x" % tuple(max(0, min(255, round(v * 255))) for v in color)
+        for deco in [d for d in ("u", "s") if d in style]:
+            inner = f"<{deco}>{body}</{deco}>"
+            markup = (f'<div style="font-family: {family}; font-weight: {"bold" if bold else "normal"}; '
+                      f'font-style: {"italic" if italic else "normal"}; font-size: {size}pt; color: {col}; line-height: 1.15;">{inner}</div>')
+            kwa = {"css": css, "scale_low": 0.5}
+            if arch is not None:
+                kwa["archive"] = arch
+            page.insert_htmlbox(r + (0, 0, 0, 40), markup, **kwa)
 
     # ------------------------------------------------------------------ oggetti del contenuto della pagina
     @staticmethod
@@ -1366,7 +1459,7 @@ class PdfDocument:
         cols = a.colors or {}
         info = AnnotInfo(xref=a.xref, type=t, kind=a.type[1], rect=to_display_rect(page, a.rect),
                          opacity=a.opacity if a.opacity is not None and a.opacity >= 0 else 1.0,
-                         movable=t in RECT_TYPES or t in REBUILD_TYPES,
+                         movable=t in RECT_TYPES or t in REBUILD_TYPES or t == T_NOTE,
                          resizable=t in RECT_TYPES or t in REBUILD_TYPES)
         try:
             info.width = float(a.border.get("width", 1.0)) if a.border else 1.0
@@ -1381,6 +1474,12 @@ class PdfDocument:
             cf = self._custom_font(a.xref)
             if cf:
                 info.fontname = "@" + cf
+            else:
+                info.fontname = textbox.base_code(info.fontname)
+            info.style = self._style_of(a.xref)
+        elif t == T_NOTE:
+            info.text = a.info.get("content", "")
+            info.stroke = _rgb(cols.get("stroke")) if cols.get("stroke") else None
         else:
             info.stroke = _rgb(cols.get("stroke")) if cols.get("stroke") else None
             info.fill = _rgb(cols.get("fill")) if cols.get("fill") else None
@@ -1414,13 +1513,18 @@ class PdfDocument:
         return True
 
     def set_props(self, pno: int, xref: int, *, stroke=None, fill="__keep__", width=None, opacity=None,
-                  text=None, fontsize=None, fontname=None, text_color=None) -> int:
+                  text=None, fontsize=None, fontname=None, text_color=None, style=None) -> int:
         page = self.doc[pno]
         a = self._find(page, xref)
         if not a:
             raise PdfError(tr("annotazione non trovata"))
         t = a.type[0]
         self._begin(tr("proprietà"))
+        if t == T_NOTE:
+            if text is not None:
+                a.set_info(content=text)
+            a.update()
+            return a.xref
         if t == T_FREETEXT:
             cur = self._info(page, a)
             if text is not None:
@@ -1434,14 +1538,13 @@ class PdfDocument:
             if custom:
                 if not fonts.resolve(newfont):
                     raise PdfError(tr("Font «{}» non disponibile: aggiungilo dalla libreria font.").format(newfont[1:]))
-            a.update(fontsize=float(fontsize or cur.fontsize), fontname="helv" if custom else newfont,
+            newstyle = self._norm_style(cur.style if style is None else style, custom)
+            a.update(fontsize=float(fontsize or cur.fontsize), fontname="helv" if custom else textbox.base_code(newfont),
                      text_color=tc, fill_color=fillc, opacity=opacity if opacity is not None else cur.opacity)
             xr = a.xref
-            if custom:
-                self.doc.xref_set_key(xr, "PDFDeskFont", fitz.get_pdf_str(newfont[1:]))
+            self._set_font_keys(xr, newfont, newstyle)
+            if custom or newstyle:
                 self._regen_custom(pno, xr)
-            else:
-                self.doc.xref_set_key(xr, "PDFDeskFont", "null")
             return xr
         else:
             if width is not None:
@@ -1481,13 +1584,18 @@ class PdfDocument:
             a.set_rect(nr)
             xr = a.xref
             if t == T_FREETEXT:
-                if self._custom_font(xr):
+                if self._html_ap(xr):
                     same = abs(nr.width - old.width) < 0.01 and abs(nr.height - old.height) < 0.01
-                    if not (same and not fonts.resolve("@" + self._custom_font(xr))):   # semplice spostamento: l'aspetto resta valido
+                    if not same:                                 # semplice spostamento: l'aspetto resta valido
                         self._regen_custom(pno, xr)
                 else:
                     self._refresh_freetext(page, a)
             return xr
+        if t == T_NOTE:                                  # l'icona conserva la sua dimensione
+            self._begin(tr("sposta"))
+            old = fitz.Rect(a.rect)
+            a.set_rect(fitz.Rect(nr.x0, nr.y0, nr.x0 + old.width, nr.y0 + old.height))
+            return a.xref
         if t in REBUILD_TYPES:
             return self._rebuild_vertices(page, a, nr)
         raise PdfError(tr("questo tipo di annotazione non si può spostare"))
@@ -1560,7 +1668,7 @@ class PdfDocument:
 
     def _realign_freetext(self, pno: int) -> None:
         page = self.doc[pno]
-        items = [(a.xref, bool(self._custom_font(a.xref))) for a in page.annots() or [] if a.type[0] == T_FREETEXT]
+        items = [(a.xref, self._html_ap(a.xref)) for a in page.annots() or [] if a.type[0] == T_FREETEXT]
         for xref, custom in items:
             if custom:
                 try:

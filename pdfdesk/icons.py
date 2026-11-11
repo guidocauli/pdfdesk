@@ -160,6 +160,13 @@ def _eraser(p, c):
     p.drawLine(16, 22, 32, 36)
 
 
+def _comment(p, c):
+    path = QPainterPath(QPointF(8, 10))
+    path.lineTo(40, 10); path.lineTo(40, 30); path.lineTo(26, 30); path.lineTo(16, 40); path.lineTo(17, 30); path.lineTo(8, 30); path.closeSubpath()
+    p.drawPath(path)
+    p.drawLine(15, 17, 33, 17); p.drawLine(15, 23, 28, 23)
+
+
 def _app(p, c):
     p.setPen(Qt.NoPen); p.setBrush(QColor(200, 40, 40)); p.drawRoundedRect(QRectF(6, 4, 36, 40), 5, 5)
     p.setPen(QPen(Qt.white, 3.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)); p.setBrush(Qt.NoBrush)
@@ -354,7 +361,7 @@ def _scan(p, c):
 
 _DRAW = {"merge": _merge, "scan": _scan, "select": _select, "hand": _hand, "textsel": _textsel, "pen": _pen, "highlighter": _highlighter, "rect": _rect,
          "ellipse": _ellipse, "line": _line, "arrow": _arrow, "text": _text, "image": _image, "sign": _sign, "hl": _hl,
-         "ul": _ul, "st": _st, "redact": _redact, "applyred": _applyred, "group": _group, "ungroup": _ungroup, "edittext": _edittext, "eraser": _eraser, "sigbox": _sign, "app": _app,
+         "ul": _ul, "st": _st, "redact": _redact, "applyred": _applyred, "group": _group, "ungroup": _ungroup, "edittext": _edittext, "eraser": _eraser, "comment": _comment, "sigbox": _sign, "app": _app,
          "open": _open, "save": _save, "saveas": _saveas, "new": _new, "undo": _undo, "redo": _redo, "zoom": _mag,
          "zin": _zin, "zout": _zout, "fitw": _fitw, "fitp": _fitp, "rotl": _rotl, "rotr": _rotr, "sigdig": _badge,
          "verify": _shield, "std": _std, "prefs": _gear, "dup": _dup, "blank": _blank, "insert": _insert,
