@@ -1,0 +1,11 @@
+build/
+build-win/
+dist/
+dist-win/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist-wine/
+build-wine/
+__pycache__/
+.pytest_cache/
