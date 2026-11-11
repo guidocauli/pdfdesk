@@ -704,5 +704,31 @@ class CommentAndTextStyleCoreTests(unittest.TestCase):
         self.assertGreater(len(self.d.doc[0].get_drawings()), n0)             # righe di sottolineato e barrato
 
 
+class SigningPackagingTests(unittest.TestCase):
+    ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def test_certificate_is_code_signing(self):
+        from cryptography import x509
+        from cryptography.x509.oid import ExtendedKeyUsageOID
+        with open(os.path.join(self.ROOT, "packaging", "windows", "pdfdesk-sign.cer"), "rb") as f:
+            c = x509.load_der_x509_certificate(f.read())
+        self.assertIn("PDFDesk", c.subject.rfc4514_string())
+        self.assertIn(ExtendedKeyUsageOID.CODE_SIGNING, c.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value)
+        self.assertFalse(c.extensions.get_extension_for_class(x509.BasicConstraints).value.ca)
+
+    def test_mac_unlock_script(self):
+        p = os.path.join(self.ROOT, "packaging", "macos", "sblocca.sh")
+        txt = open(p, encoding="utf-8").read()
+        self.assertIn("xattr -cr", txt)
+        self.assertTrue(os.access(p, os.X_OK))
+
+    def test_installer_has_certificate_section_and_no_private_key_in_sources(self):
+        nsi = open(os.path.join(self.ROOT, "packaging", "windows", "pdfdesk.nsi"), encoding="utf-8").read()
+        for k in ("SecCert", "pdfdesk-sign.cer", "TrustedPublisher", "/CERT"):
+            self.assertIn(k, nsi)
+        self.assertIn("pdfdesk-sign.key", open(os.path.join(self.ROOT, ".gitignore")).read())
+        self.assertIn("pdfdesk-sign.key", open(os.path.join(self.ROOT, "make_sources.sh")).read())
+
+
 if __name__ == "__main__":
     unittest.main()

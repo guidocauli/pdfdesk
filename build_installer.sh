@@ -9,7 +9,11 @@ VER=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' pdfdesk/__init__.py)
 EXE=${1:-$( [ -f dist-wine/pdfdesk.exe ] && echo dist-wine/pdfdesk.exe || echo dist/pdfdesk.exe )}
 command -v makensis >/dev/null || { echo "Errore: makensis non trovato (apt install nsis)"; exit 1; }
 [ -f "$EXE" ] || { echo "Errore: $EXE non trovato"; exit 1; }
-mkdir -p dist
+mkdir -p dist build
+[ -f packaging/windows/pdfdesk-sign.cer ] || { echo "Errore: manca packaging/windows/pdfdesk-sign.cer"; exit 1; }
+SIGNED="build/pdfdesk-signed.exe"; ./sign_windows.sh "$EXE" "$SIGNED"      # firma l'eseguibile già compilato (nessuna ricompilazione)
+EXE="$SIGNED"
 OUT="$PWD/dist/pdfdesk-$VER-windows-x86_64-setup.exe"
 (cd packaging/windows && makensis -V2 -DVERSION="$VER" -DEXE="$(realpath "../../$EXE" 2>/dev/null || realpath "$EXE")" -DOUTFILE="$OUT" pdfdesk.nsi)
+./sign_windows.sh "$OUT" "$OUT"                                              # firma anche l'installer
 echo "Installer creato: $OUT"

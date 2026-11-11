@@ -6,5 +6,6 @@ cd "$(dirname "$0")"
 VER=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' pdfdesk/__init__.py)
 mkdir -p dist
 tar --exclude=dist --exclude=build --exclude=build-win --exclude=dist-win --exclude=.git --exclude=dist-wine --exclude=build-wine --exclude=__pycache__ --exclude=.pytest_cache \
+    --exclude=pdfdesk-sign.key --exclude=pdfdesk-sign.pfx --exclude=pdfdesk-sign.pem \   # la chiave privata di firma non va mai negli archivi pubblici
     --transform "s,^\.,pdfdesk-$VER," -czf "dist/pdfdesk-$VER-sorgenti.tar.gz" .
 echo "Creato dist/pdfdesk-$VER-sorgenti.tar.gz"

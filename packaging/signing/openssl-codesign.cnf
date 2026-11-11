@@ -1,0 +1,13 @@
+[req]
+distinguished_name = dn
+x509_extensions = ext
+prompt = no
+[dn]
+CN = PDFDesk - Guido Cauli
+O = Guido Cauli
+emailAddress = guido.cauli@gmail.com
+[ext]
+basicConstraints = critical,CA:FALSE
+keyUsage = critical,digitalSignature
+extendedKeyUsage = critical,codeSigning
+subjectKeyIdentifier = hash

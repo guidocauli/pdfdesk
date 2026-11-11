@@ -5,3 +5,6 @@ dist-win/
 __pycache__/
 *.pyc
 .pytest_cache/
+packaging/signing/pdfdesk-sign.key
+packaging/signing/*.pfx
+packaging/signing/*.pem

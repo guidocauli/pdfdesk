@@ -19,6 +19,7 @@ OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m)
 if [ "$OS" = "darwin" ]; then
   APP="dist/PDFDesk.app/Contents/MacOS/pdfdesk"; "$APP" --selftest
   (cd dist && ditto -c -k --keepParent PDFDesk.app "pdfdesk-$VER-macos-$ARCH.zip")
+  cp packaging/macos/sblocca.sh dist/sblocca.sh && chmod +x dist/sblocca.sh && (cd dist && zip -q -g "pdfdesk-$VER-macos-$ARCH.zip" sblocca.sh)   # script di primo avvio (xattr -cr)
 else
   ./dist/pdfdesk --selftest
   rm -rf build/pkg && mkdir -p build/pkg/icons && cp dist/pdfdesk LICENSE README.md THIRD_PARTY.md build/pkg/

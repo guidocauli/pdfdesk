@@ -141,13 +141,14 @@ Da terminale: `pdfdesk --version`, `pdfdesk --compress in.pdf out.pdf --preset m
 - Le immagini inserite sono annotazioni (spostabili/eliminabili); le immagini già presenti nel PDF non sono modificabili singolarmente (si possono oscurare con la redazione).
 - PDF/A e PDF/X: vedi la sezione dedicata (annotazioni appiattite, livello «b», PDF/X validato solo internamente).
 - Annulla/ripeti conserva copie dello stato (limite ~400 MB): con PDF molto grandi la cronologia si accorcia.
-- Gli eseguibili non sono firmati dal produttore: Windows SmartScreen e macOS Gatekeeper mostreranno un avviso al primo avvio (macOS: clic destro → Apri).
+- Gli eseguibili Windows sono firmati con un certificato **autofirmato** (non di un'autorità pubblica): per non vedere l'avviso di SmartScreen/«editore sconosciuto» va installato il certificato `pdfdesk-sign.cer` (lo fa l'installatore, vedi sotto). La build macOS non è firmata né notarizzata: al primo avvio si esegue `sblocca.sh`.
 
 ## Installazione e aggiornamento
 
 **Windows** — esegui `pdfdesk-<versione>-windows-x86_64-setup.exe` (richiede i diritti di amministratore).
 L'installatore copia il programma in `C:\Program Files\PDFDesk`, crea la voce nel menu Start (e, a scelta, il collegamento sul desktop e la voce «Apri con» per i PDF) e si registra in *App e funzionalità*.
-Se è già installata una versione precedente, rileva la cartella esistente e **aggiorna sul posto**; se il programma è aperto chiede di chiuderlo; se la versione installata è uguale o più recente chiede conferma. Le impostazioni e le firme salvate dell'utente non vengono toccate, neppure disinstallando. Installazione silenziosa: `setup.exe /S` (opzionale `/D=C:\percorso`).
+Se è già installata una versione precedente, rileva la cartella esistente e **aggiorna sul posto**; se il programma è aperto chiede di chiuderlo; se la versione installata è uguale o più recente chiede conferma. Le impostazioni e le firme salvate dell'utente non vengono toccate, neppure disinstallando. Installazione silenziosa: `setup.exe /S` (opzionale `/D=C:\percorso`; con `/CERT` installa anche il certificato).
+L'eseguibile e l'installatore sono **firmati** con il certificato autofirmato «PDFDesk - Guido Cauli» (`pdfdesk-sign.cer`, impronta SHA-256 `9A:26:92:17:2A:EF:24:83:C1:00:CD:31:A2:90:F8:94:75:97:39:C3:C4:11:4B:C0:28:26:85:60:01:C9:F6:2D`). Nella pagina dei componenti, **«Certificato dell'editore»** lo aggiunge alle autorità e agli editori attendibili del computer, così Windows riconosce la firma; fidati solo se hai scaricato il programma da una fonte sicura. La disinstallazione lo rimuove. Con lo zip portatile: clic destro su `installa-certificato.cmd` → *Esegui come amministratore*. Nota: un certificato autofirmato non sostituisce quello di un'autorità pubblica; SmartScreen basa parte del giudizio sulla reputazione del file.
 In alternativa lo zip contiene il solo `pdfdesk.exe`, eseguibile senza installazione.
 
 **Linux** — estrai il `tar.gz`, poi:
@@ -159,7 +160,7 @@ sudo ./install.sh --system   # per tutti gli utenti (/opt/pdfdesk)
 
 Lo script installa l'eseguibile, il file `pdfdesk.desktop` (voce nel menu applicazioni, associazione ai PDF) e le icone in tutte le dimensioni. **Per aggiornare** basta lanciare `install.sh` del pacchetto nuovo: sostituisce la versione precedente (anche se il programma è aperto) e mostra «dalla versione X alla Y». Per rimuoverlo: `~/.local/share/pdfdesk/uninstall.sh` (o `sudo /opt/pdfdesk/uninstall.sh --system`).
 
-**macOS** — apri lo zip e trascina `PDFDesk.app` in *Applicazioni*; per aggiornare sostituisci l'app. Le build macOS non sono firmate né notarizzate: al primo avvio usa clic destro → *Apri*.
+**macOS** — apri lo zip e trascina `PDFDesk.app` in *Applicazioni*; per aggiornare sostituisci l'app. Le build macOS non sono firmate né notarizzate: al primo avvio macOS può dichiararla «danneggiata». Apri il Terminale ed esegui `sh sblocca.sh` (il file è nello zip, accanto all'app; se l'app è già in Applicazioni: `sh sblocca.sh /Applications/PDFDesk.app`). Lo script esegue `xattr -cr PDFDesk.app`, che toglie l'attributo di quarantena; si fa una volta sola per ogni nuova versione scaricata. In alternativa: clic destro → *Apri*.
 
 **Verifica aggiornamenti** — menu *Aiuto → Verifica aggiornamenti…* confronta la versione in uso con l'ultima release su GitHub (solo su richiesta, nessun dato inviato) e apre la pagina di download.
 
@@ -170,7 +171,7 @@ Lo script installa l'eseguibile, il file `pdfdesk.desktop` (voce nel menu applic
 build.bat             # Windows
 ```
 
-Per compilare Windows, Linux e macOS (Intel e Apple Silicon) in un colpo solo c'è il workflow GitHub Actions `.github/workflows/build.yml` (avvio manuale o tag `v*`). Per compilare serve **Ghostscript** installato (viene incluso nel pacchetto): `apt install ghostscript fonts-urw-base35`, `brew install ghostscript`, oppure l'installer da ghostscript.com (Windows). Su Linux servono le librerie di sistema di Qt: Debian/Ubuntu `libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1 libxcb-cursor0`; Fedora/RedHat `mesa-libEGL mesa-libGL libxkbcommon dbus-libs fontconfig xcb-util-cursor`; Arch `libglvnd libxkbcommon dbus fontconfig xcb-util-cursor`.
+Per Windows e Linux c'è il workflow GitHub Actions `.github/workflows/build.yml` (avvio manuale o tag `v*`); **macOS non si compila più con GitHub Actions**: si usa `./build.sh` su un Mac (o `build_macos_remote.sh`). Firma Windows: `./sign_windows.sh ENTRATA.exe USCITA.exe` firma un eseguibile già compilato con la chiave `packaging/signing/pdfdesk-sign.key` (privata, fuori dal repository; serve `osslsigncode`); `build_installer.sh` la usa da solo. Per compilare serve **Ghostscript** installato (viene incluso nel pacchetto): `apt install ghostscript fonts-urw-base35`, `brew install ghostscript`, oppure l'installer da ghostscript.com (Windows). Su Linux servono le librerie di sistema di Qt: Debian/Ubuntu `libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1 libxcb-cursor0`; Fedora/RedHat `mesa-libEGL mesa-libGL libxkbcommon dbus-libs fontconfig xcb-util-cursor`; Arch `libglvnd libxkbcommon dbus fontconfig xcb-util-cursor`.
 
 I pacchetti hanno il numero di versione nel nome: `pdfdesk-<versione>-linux-<arch>.tar.gz`, `pdfdesk-<versione>-windows-x86_64.zip`, `pdfdesk-<versione>-macos-<arch>.zip`, `pdfdesk-<versione>-sorgenti.tar.gz` (`./make_sources.sh`). La versione si legge da `pdfdesk/__init__.py`.
 

@@ -1,5 +1,6 @@
 # PDFDesk — Guido Cauli <guido.cauli@gmail.com>
-# Compila, collauda e pubblica gli eseguibili per Windows, Linux e macOS (Intel e Apple Silicon).
+# Compila, collauda e pubblica gli eseguibili per Windows e Linux. macOS NON si compila più qui: si usa ./build.sh su un Mac
+# (o build_macos_remote.sh da Linux); lo zip Mac va completato con packaging/macos/sblocca.sh.
 name: build
 on:
   push: { tags: ["v*"] }
@@ -13,8 +14,6 @@ jobs:
         include:
           - { os: ubuntu-22.04, name: linux-x86_64 }
           - { os: windows-latest, name: windows-x86_64 }
-          - { os: macos-15-intel, name: macos-intel }
-          - { os: macos-15, name: macos-arm64 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -23,9 +22,6 @@ jobs:
       - name: Librerie di sistema (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 softhsm2 opensc ghostscript fonts-urw-base35 libglib2.0-0
-      - name: Ghostscript (macOS)
-        if: runner.os == 'macOS'
-        run: brew install ghostscript
       - name: Ghostscript (Windows)
         if: runner.os == 'Windows'
         run: choco install ghostscript -y --no-progress
@@ -41,16 +37,14 @@ jobs:
       - name: Collaudo dell'eseguibile
         shell: bash
         run: |
-          if [ "$RUNNER_OS" = "macOS" ]; then dist/PDFDesk.app/Contents/MacOS/pdfdesk --selftest;
-          elif [ "$RUNNER_OS" = "Windows" ]; then dist/pdfdesk.exe --selftest || true; cat "$TEMP/pdfdesk-selftest.log"; grep -q ERRORE "$TEMP/pdfdesk-selftest.log" && exit 1 || true;
+          if [ "$RUNNER_OS" = "Windows" ]; then dist/pdfdesk.exe --selftest || true; cat "$TEMP/pdfdesk-selftest.log"; grep -q ERRORE "$TEMP/pdfdesk-selftest.log" && exit 1 || true;
           else dist/pdfdesk --selftest; fi
       - name: Pacchetto
         shell: bash
         run: |
           mkdir -p out
           VER=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' pdfdesk/__init__.py)
-          if [ "$RUNNER_OS" = "macOS" ]; then (cd dist && ditto -c -k --keepParent PDFDesk.app ../out/pdfdesk-$VER-${{ matrix.name }}.zip);
-          elif [ "$RUNNER_OS" = "Windows" ]; then 7z a out/pdfdesk-$VER-${{ matrix.name }}.zip ./dist/pdfdesk.exe LICENSE README.md THIRD_PARTY.md;
+          if [ "$RUNNER_OS" = "Windows" ]; then 7z a out/pdfdesk-$VER-${{ matrix.name }}.zip ./dist/pdfdesk.exe packaging/windows/pdfdesk-sign.cer packaging/windows/installa-certificato.cmd LICENSE README.md THIRD_PARTY.md;
           else mkdir -p pkg/icons && cp dist/pdfdesk LICENSE README.md THIRD_PARTY.md packaging/linux/pdfdesk.desktop packaging/linux/install.sh packaging/linux/uninstall.sh pkg/ && cp packaging/assets/pdfdesk-*.png packaging/assets/pdfdesk.svg pkg/icons/ && tar -C pkg -czf out/pdfdesk-$VER-${{ matrix.name }}.tar.gz .; fi
       - uses: actions/upload-artifact@v4
         with:

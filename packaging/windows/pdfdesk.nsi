@@ -1,7 +1,9 @@
 ; PDFDesk — Guido Cauli <guido.cauli@gmail.com>
 ; Installer per Windows (NSIS). Installa, AGGIORNA una versione precedente (stessa cartella, stessi collegamenti) e si disinstalla.
 ; Compilazione: makensis -DVERSION=0.7.5 -DEXE=..\..\dist-wine\pdfdesk.exe -DOUTFILE=pdfdesk-0.7.5-windows-x86_64-setup.exe pdfdesk.nsi
-; Opzioni da riga di comando:  /S (silenzioso)   /D=C:\percorso (cartella, ultimo parametro)
+; Opzioni da riga di comando:  /S (silenzioso)   /D=C:\percorso (cartella, ultimo parametro)   /CERT (con /S: installa anche il certificato)
+; L'eseguibile e questo installer sono firmati con il certificato autofirmato pdfdesk-sign.cer (vedi sign_windows.sh): la sezione
+; «Certificato» lo aggiunge alle autorità attendibili e agli editori attendibili del computer, così Windows riconosce la firma.
 
 Unicode true
 !ifndef VERSION
@@ -40,6 +42,8 @@ VIAddVersionKey "LegalCopyright" "Guido Cauli <guido.cauli@gmail.com>"
 !include "Sections.nsh"
 !include "FileFunc.nsh"
 !insertmacro GetSize
+!insertmacro GetParameters
+!insertmacro GetOptions
 
 !define MUI_ICON "..\assets\pdfdesk.ico"
 !define MUI_UNICON "..\assets\pdfdesk.ico"
@@ -77,6 +81,10 @@ LangString SEC_DESK ${LANG_ITALIAN} "Icona sul desktop"
 LangString SEC_DESK ${LANG_ENGLISH} "Desktop shortcut"
 LangString SEC_ASSOC ${LANG_ITALIAN} "Mostra PDFDesk in «Apri con» per i file PDF"
 LangString SEC_ASSOC ${LANG_ENGLISH} "Show PDFDesk in «Open with» for PDF files"
+LangString SEC_CERT ${LANG_ITALIAN} "Certificato dell'editore (consigliato: Windows riconosce la firma di PDFDesk)"
+LangString SEC_CERT ${LANG_ENGLISH} "Publisher certificate (recommended: Windows recognises PDFDesk's signature)"
+LangString DESC_CERT ${LANG_ITALIAN} "Aggiunge il certificato di Guido Cauli alle autorità e agli editori attendibili di questo computer, così Windows non tratta PDFDesk come software di un editore sconosciuto. Fidati solo se hai scaricato questo programma da una fonte che ritieni sicura."
+LangString DESC_CERT ${LANG_ENGLISH} "Adds Guido Cauli's certificate to this computer's trusted root authorities and trusted publishers, so Windows no longer treats PDFDesk as coming from an unknown publisher. Trust it only if you downloaded this program from a source you consider safe."
 LangString UNINST_KEEP ${LANG_ITALIAN} "PDFDesk è stato rimosso. Le impostazioni personali e le firme salvate sono state conservate."
 LangString UNINST_KEEP ${LANG_ENGLISH} "PDFDesk has been removed. Your personal settings and saved signatures were kept."
 
@@ -104,6 +112,7 @@ Section "$(SEC_MAIN)" SecMain
   File "..\..\README.md"
   File "..\..\THIRD_PARTY.md"
   File "..\assets\pdfdesk.ico"
+  File "pdfdesk-sign.cer"
   CreateShortcut "$SMPROGRAMS\${APP}.lnk" "$INSTDIR\pdfdesk.exe" "" "$INSTDIR\pdfdesk.ico" 0
   ; registrazione in «App e funzionalità»
   WriteRegStr HKLM "${APP_KEY}" "InstallDir" "$INSTDIR"
@@ -140,12 +149,36 @@ Section "$(SEC_ASSOC)" SecAssoc
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
 SectionEnd
 
+Section "$(SEC_CERT)" SecCert
+  SetRegView 64
+  nsExec::ExecToLog '"$SYSDIR\certutil.exe" -addstore -f Root "$INSTDIR\pdfdesk-sign.cer"'
+  Pop $0
+  nsExec::ExecToLog '"$SYSDIR\certutil.exe" -addstore -f TrustedPublisher "$INSTDIR\pdfdesk-sign.cer"'
+  Pop $1
+  ${If} $0 == 0
+  ${AndIf} $1 == 0
+    WriteRegDWORD HKLM "${APP_KEY}" "CertInstalled" 1
+  ${EndIf}
+SectionEnd
+
+!insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecCert} "$(DESC_CERT)"
+!insertmacro MUI_FUNCTION_DESCRIPTION_END
+
 Function .onInit
   ${IfNot} ${RunningX64}
     MessageBox MB_ICONSTOP|MB_OK "$(MSG_64)"
     Abort
   ${EndIf}
   SetRegView 64
+  ; in modalità silenziosa il certificato si installa solo se richiesto esplicitamente con /CERT
+  IfSilent 0 certdone
+    ${GetParameters} $R0
+    ClearErrors
+    ${GetOptions} $R0 "/CERT" $R1
+    IfErrors 0 certdone
+      SectionSetFlags ${SecCert} 0
+  certdone:
   StrCpy $IsUpdate "0"
   ReadRegStr $PrevVersion HKLM "${APP_KEY}" "Version"
   ${If} $PrevVersion != ""
@@ -166,6 +199,10 @@ Function .onInit
     ; aggiornamento: i collegamenti che l'utente non aveva non vengono ricreati
     IfFileExists "$DESKTOP\${APP}.lnk" +2 0
       SectionSetFlags ${SecDesktop} 0
+    ReadRegDWORD $3 HKLM "${APP_KEY}" "CertInstalled"           ; aggiornamento: il certificato è preselezionato solo se c'era già
+    ${If} $3 != 1
+      SectionSetFlags ${SecCert} 0
+    ${EndIf}
     ReadRegStr $2 HKLM "Software\Classes\PDFDesk.Document" ""
     ${If} $2 == ""
       SectionSetFlags ${SecAssoc} 0
@@ -180,6 +217,12 @@ Section "Uninstall"
   Delete "$INSTDIR\README.md"
   Delete "$INSTDIR\THIRD_PARTY.md"
   Delete "$INSTDIR\pdfdesk.ico"
+  ReadRegDWORD $0 HKLM "${APP_KEY}" "CertInstalled"
+  ${If} $0 == 1
+    nsExec::ExecToLog '"$SYSDIR\certutil.exe" -delstore Root "PDFDesk - Guido Cauli"'
+    nsExec::ExecToLog '"$SYSDIR\certutil.exe" -delstore TrustedPublisher "PDFDesk - Guido Cauli"'
+  ${EndIf}
+  Delete "$INSTDIR\pdfdesk-sign.cer"
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"
   Delete "$SMPROGRAMS\${APP}.lnk"
