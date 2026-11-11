@@ -468,13 +468,72 @@ class PdfDocument:
             a.set_rect(r)
         return a.xref
 
+    def _flow_words(self, page: fitz.Page, a, b) -> list:
+        """Parole (ordine di lettura del PDF) comprese tra i punti a e b, come in una selezione di testo normale."""
+        words = page.get_text("words")
+        if not words:
+            return []
+
+        def nearest(pt) -> int:
+            p = fitz.Point(pt)
+            best, bi = None, 0
+            for i, w in enumerate(words):
+                r = fitz.Rect(w[:4])
+                dx = max(r.x0 - p.x, 0, p.x - r.x1)
+                dy = max(r.y0 - p.y, 0, p.y - r.y1)
+                d = dy * 4 + dx                    # la riga conta più della distanza orizzontale
+                if best is None or d < best:
+                    best, bi = d, i
+            return bi
+        i, j = sorted((nearest(a), nearest(b)))
+        return words[i:j + 1]
+
+    def flow_rects(self, pno: int, a, b) -> list:
+        """Rettangoli (uno per riga) del testo selezionato a flusso tra a e b, in coordinate di visualizzazione."""
+        page = self.doc[pno]
+        out = []
+        for q in self._flow_quads(page, to_page_pt(page, a), to_page_pt(page, b)):
+            out.append(to_display_rect(page, q.rect))
+        return out
+
+    def _flow_quads(self, page: fitz.Page, a, b) -> list:
+        lines: dict = {}
+        order = []
+        for w in self._flow_words(page, a, b):
+            key = (w[5], w[6])
+            r = fitz.Rect(w[:4])
+            if key not in lines:
+                lines[key] = r
+                order.append(key)
+            else:
+                lines[key] |= r
+        return [lines[k].quad for k in order]
+
+    def text_between(self, pno: int, a, b) -> str:
+        page = self.doc[pno]
+        out, last = [], None
+        for w in self._flow_words(page, to_page_pt(page, a), to_page_pt(page, b)):
+            key = (w[5], w[6])
+            if last is not None:
+                out.append("\n" if key != last else " ")
+            out.append(w[4])
+            last = key
+        return "".join(out)
+
+    def add_markup_flow(self, pno: int, kind: str, a, b) -> int:
+        page = self.doc[pno]
+        quads = self._flow_quads(page, to_page_pt(page, a), to_page_pt(page, b))
+        return self._add_markup_quads(page, kind, quads)
+
     def add_markup(self, pno: int, kind: str, rect) -> int:
         """Evidenzia/sottolinea/barra il testo contenuto nel rettangolo."""
         page = self.doc[pno]
         r = to_page_rect(page, rect)
-        quads = self._quads_in_rect(page, r)
+        return self._add_markup_quads(page, kind, self._quads_in_rect(page, r))
+
+    def _add_markup_quads(self, page: fitz.Page, kind: str, quads: list) -> int:
         if not quads:
-            raise PdfError("nessun testo nell'area selezionata")
+            raise PdfError("nessun testo nella selezione")
         self._begin("marcatura")
         if kind == "hl":
             a = page.add_highlight_annot(quads=quads)
@@ -724,9 +783,92 @@ class PdfDocument:
                 info = {"rect": to_display_rect(page, r), "text": "\n".join(l for l in lines if l),
                         "fontsize": round(float(s0["size"]), 1),
                         "fontname": _font_from_span(s0["font"], s0["flags"]), "color": color}
+                info["spans"] = [{"origin": tuple(sp["origin"]), "size": float(sp["size"]), "font": sp["font"],
+                                  "flags": sp["flags"], "color": sp["color"], "text": sp["text"], "dir": tuple(l["dir"])}
+                                 for l in b["lines"] for sp in l["spans"] if sp["text"]]
+                info["page_rect"] = tuple(r)
                 if best is None or r.get_area() < best[0]:
                     best = (r.get_area(), info)
         return best[1] if best else None
+
+    def _span_fonts(self, page: fitz.Page, spans: list) -> dict:
+        """Per ogni font usato dai span: font incorporato riutilizzabile (se contiene tutti i caratteri) oppure standard simile."""
+        res: dict = {}
+        try:
+            listed = page.get_fonts(full=True)
+        except Exception:
+            listed = []
+        for sp in spans:
+            key = sp["font"]
+            chars = "".join(x["text"] for x in spans if x["font"] == key)
+            if key in res and res[key].get("buf") is None:
+                continue
+            ent = res.setdefault(key, {"buf": None, "name": _font_from_span(sp["font"], sp["flags"])})
+            if ent["buf"] is not None:
+                continue
+            for ent_ in listed:
+                xref, ext, base = ent_[0], ent_[1], ent_[3]
+                if ext in ("ttf", "otf", "cff", "ttc") and (base.split("+")[-1] == key or base == key):
+                    try:
+                        _n2, _e2, _t2, buf = self.doc.extract_font(xref)
+                        fo = fitz.Font(fontbuffer=buf)
+                        if buf and all(fo.has_glyph(ord(c)) for c in chars if not c.isspace()):
+                            ent["buf"] = buf
+                            break
+                    except Exception:
+                        continue
+        return res
+
+    def _move_text_exact(self, pno: int, obj: dict, new_rect) -> bool:
+        """Sposta il blocco ricopiandone l'aspetto reale (font incorporati, corpo, colore, interlinea) come
+        contenuto vettoriale traslato: nessuna riscrittura. False se non applicabile."""
+        page = self.doc[pno]
+        if page.rotation or not obj.get("page_rect"):
+            return False
+        old = fitz.Rect(obj["page_rect"])
+        dest = to_page_rect(page, new_rect)
+        dx, dy = dest.x0 - old.x0, dest.y0 - old.y0
+        src = fitz.open("pdf", self.doc.tobytes(garbage=0))
+        try:
+            src.select([pno])
+            sp = src[0]
+            sp.add_redact_annot(old, fill=False)
+            sp.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE, text=fitz.PDF_REDACT_TEXT_NONE,
+                                graphics=fitz.PDF_REDACT_LINE_ART_REMOVE_IF_COVERED)
+            self._begin("sposta testo")
+            self._mark_permanent()
+            self._erase(page, old, text=True)
+            page.show_pdf_page(fitz.Rect(old.x0 + dx, old.y0 + dy, old.x1 + dx, old.y1 + dy), src, 0, clip=old)
+        finally:
+            src.close()
+        return True
+
+    def _move_text_spans(self, pno: int, obj: dict, new_rect) -> bool:
+        """Sposta il blocco di testo conservando carattere, dimensione, colore e disposizione di ogni riga
+        (traslazione pura: nessun ritorno a capo né ridimensionamento del testo). False se non applicabile."""
+        page = self.doc[pno]
+        spans = obj.get("spans")
+        if not spans or page.rotation or any(abs(sp["dir"][0] - 1) > 1e-3 or abs(sp["dir"][1]) > 1e-3 for sp in spans):
+            return False
+        old = fitz.Rect(obj["page_rect"])
+        dest = to_page_rect(page, new_rect)
+        dx, dy = dest.x0 - old.x0, dest.y0 - old.y0
+        fonts_ = self._span_fonts(page, spans)
+        self._begin("sposta testo")
+        self._mark_permanent()
+        self._erase(page, old, text=True)
+        tw = {}
+        for sp in spans:
+            ent = fonts_[sp["font"]]
+            col = sp["color"]
+            color = (((col >> 16) & 255) / 255, ((col >> 8) & 255) / 255, (col & 255) / 255)
+            pt = fitz.Point(sp["origin"][0] + dx, sp["origin"][1] + dy)
+            if ent["buf"] is not None:
+                page.insert_text(pt, sp["text"], fontsize=sp["size"], color=color, fontname="PdfdeskO%d" % (abs(hash(sp["font"])) % 10000),
+                                 fontbuffer=ent["buf"])
+            else:
+                page.insert_text(pt, sp["text"], fontsize=sp["size"], color=color, fontname=ent["name"])
+        return True
 
     def replace_text_block(self, pno: int, rect, new_text: str, fontsize: float, fontname: str,
                            color: Color, dest=None) -> None:
@@ -877,6 +1019,15 @@ class PdfDocument:
         page = self.doc[pno]
         k = obj["kind"]
         if k == "text":
+            n0 = len(self._undo)
+            try:
+                if self._move_text_exact(pno, obj, new_rect):
+                    return
+            except Exception:
+                if len(self._undo) > n0:                 # fallito a metà: si ripristina lo stato precedente
+                    self._replace_doc(self._undo.pop())
+            if self._move_text_spans(pno, obj, new_rect):
+                return
             self.replace_text_block(pno, obj["rect"], obj["text"], obj["fontsize"], obj["fontname"], obj["color"], dest=new_rect)
             return
         nr = to_page_rect(page, new_rect)
@@ -1193,7 +1344,7 @@ class PdfDocument:
     def current_bytes(self) -> bytes:
         """Stato corrente come PDF. Per i PDF firmati: salvataggio incrementale (firme intatte)."""
         self._pending_drop = False
-        if self.is_signed and self.has_permanent_changes:
+        if self.is_signed and self.has_permanent_changes and not getattr(self, "keep_signatures", False):
             # un salvataggio incrementale conserverebbe la revisione precedente con il contenuto eliminato:
             # si riscrive il file per intero senza le firme (ormai invalide). Il documento aperto resta com'è
             # (annulla compreso) finché il salvataggio non va a buon fine: vedi mark_saved().
@@ -1271,6 +1422,7 @@ class PdfDocument:
                 pass
 
     def mark_saved(self, path: str) -> None:
+        self.keep_signatures = False
         if getattr(self, "_pending_drop", False) and self.is_signed:
             self.drop_signatures()               # il file salvato non ha più le firme: il documento aperto si allinea
         self._pending_drop = False

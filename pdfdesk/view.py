@@ -9,7 +9,7 @@ import pymupdf as fitz
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (QBrush, QColor, QImage, QKeySequence, QPainter, QPainterPath, QPen, QPixmap,
                            QTransform)
-from PySide6.QtWidgets import (QGraphicsItem, QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsRectItem,
+from PySide6.QtWidgets import (QApplication, QGraphicsItem, QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsRectItem,
                                QGraphicsScene, QGraphicsView)
 
 from .core import AnnotInfo, PdfDocument
@@ -19,6 +19,7 @@ MARGIN = 24.0
 PT_TO_PX = 96.0 / 72.0
 HANDLES = ("nw", "n", "ne", "e", "se", "s", "sw", "w")
 
+TEXT_FLOW_TOOLS = {"hl", "ul", "st", "textsel"}
 DRAG_RECT_TOOLS = {"rect", "ellipse", "text", "redact", "hl", "ul", "st", "textsel", "image", "sign", "sigbox", "grab"}
 CLICK_TOOLS = {"edittext", "eraser", "form"}
 
@@ -100,6 +101,7 @@ class DocView(QGraphicsView):
     rectDrawn = Signal(str, int, QRectF)               # strumento, pagina, rettangolo (punti pagina)
     strokeDrawn = Signal(str, int, list)               # strumento, pagina, [(x, y)]
     lineDrawn = Signal(str, int, QPointF, QPointF)
+    textFlowDrawn = Signal(str, int, QPointF, QPointF)  # strumento testo, pagina, punto iniziale e finale (selezione a righe)
     pointClicked = Signal(str, int, QPointF)
     selectionChanged = Signal(int, int)                # pagina, xref (-1 = nessuna)
     transformRequested = Signal(int, int, QRectF, bool)  # pagina, xref, nuovo rettangolo, resize
@@ -141,6 +143,7 @@ class DocView(QGraphicsView):
         self._ghost: Optional[QGraphicsPixmapItem] = None
         self._drag = None
         self._preview: Optional[QGraphicsItem] = None
+        self.text_flow = True                     # selezione del testo a righe (Alt la inverte: ad area)
         self._pan_last: Optional[QPointF] = None
         self._found: list[QGraphicsRectItem] = []
         self._timer = QTimer(self)
@@ -592,7 +595,16 @@ class DocView(QGraphicsView):
             item.setZValue(60)
             self.scene_.addItem(item)
             self._preview = item
-            self._drag = {"kind": "rect", "page": pno, "a": sp, "b": sp}
+            flow = t in TEXT_FLOW_TOOLS and (self.text_flow != bool(QApplication.keyboardModifiers() & Qt.AltModifier))
+            self._drag = {"kind": "rect", "page": pno, "a": sp, "b": sp, "flow": flow}
+            if flow:                                   # selezione a righe: si disegna il testo, non il rettangolo
+                self.scene_.removeItem(item)
+                item = QGraphicsPathItem()
+                item.setPen(QPen(Qt.NoPen))
+                item.setBrush(QBrush(QColor(255, 200, 0, 90) if t != "textsel" else QColor(60, 140, 240, 90)))
+                item.setZValue(60)
+                self.scene_.addItem(item)
+                self._preview = item
         elif t == "form":
             loc = self._local(pno, sp, clamp=False)
             f = self.doc.field_at(pno, (loc.x(), loc.y()))
@@ -651,7 +663,15 @@ class DocView(QGraphicsView):
             self._preview.setPath(p)
         elif k == "rect":
             d["b"] = self._clamp(d["page"], sp)
-            self._preview.setRect(QRectF(d["a"], d["b"]).normalized())
+            if d.get("flow"):
+                pno = d["page"]; o = self.page_rects[pno].topLeft()
+                a, b = self._local(pno, d["a"]), self._local(pno, d["b"])
+                path = QPainterPath()
+                for r in self.doc.flow_rects(pno, (a.x(), a.y()), (b.x(), b.y())):
+                    path.addRect(QRectF(r.x0 + o.x(), r.y0 + o.y(), r.width, r.height))
+                self._preview.setPath(path)
+            else:
+                self._preview.setRect(QRectF(d["a"], d["b"]).normalized())
         elif k == "move":
             delta = sp - d["start"]
             if not d["moved"] and delta.manhattanLength() * self.transform().m11() < 3:
@@ -732,6 +752,8 @@ class DocView(QGraphicsView):
             r = QRectF(self._local(pno, d["a"]), self._local(pno, d["b"])).normalized()
             if r.width() < 3 and r.height() < 3:
                 self.pointClicked.emit(self.tool, pno, r.topLeft())
+            elif d.get("flow"):
+                self.textFlowDrawn.emit(self.tool, pno, self._local(pno, d["a"]), self._local(pno, d["b"]))
             else:
                 self.rectDrawn.emit(self.tool, pno, r)
         elif k in ("move", "resize"):

@@ -344,6 +344,15 @@ class SignedUndoTests(unittest.TestCase):
         p.mark_saved(self.path)                                             # salvataggio riuscito: firme scartate
         self.assertFalse(p.is_signed)
 
+    def test_permanent_op_keep_signatures(self):
+        p = PdfDocument.open(self.path)
+        o = p.content_at(0, (120, 230)); p.delete_content(0, o)
+        p.keep_signatures = True
+        out = p.current_bytes()
+        self.assertTrue(out.startswith(self.orig))
+        st = signing.verify_pdf_bytes(out)[0]; self.assertTrue(st.intact)
+        p.mark_saved(self.path); self.assertTrue(p.is_signed); self.assertFalse(p.keep_signatures)
+
     def test_object_streams_document(self):
         make_text_pdf(os.path.join(TMP, "t3.pdf"))
         data = compress.optimize_bytes(open(os.path.join(TMP, "t3.pdf"), "rb").read(), compress.SaveOptions("medium"))
@@ -397,3 +406,55 @@ class GridAndThumbsTests(unittest.TestCase):
         self.assertLessEqual(w2, t.viewport().width())
         self.assertLessEqual(abs(t.item(0).icon().actualSize(t.iconSize()).width() - t.iconSize().width()), 2)
         t.resize(2000, 400); t.relayout(); self.assertLessEqual(t.iconSize().width(), ThumbPanel.MAX_W)
+
+
+class TextMoveKeepsStyleTests(unittest.TestCase):
+    def test_move_keeps_font_size_color(self):
+        d = fitz.open(); pg = d.new_page()
+        pg.insert_text((72, 100), "Titolo grande", fontsize=22, fontname="hebo", color=(1, 0, 0))
+        pg.insert_text((72, 300), "Corpo piccolo serif", fontsize=9.5, fontname="tiro")
+        path = os.path.join(TMP, "tm.pdf"); d.save(path)
+        p = PdfDocument.open(path)
+
+        def spans():
+            return sorted([(round(s["size"], 1), s["font"], s["text"], s["color"], round(s["origin"][0]), round(s["origin"][1]))
+                           for b in p.doc[0].get_text("dict")["blocks"] if b["type"] == 0
+                           for l in b["lines"] for s in l["spans"]], key=lambda x: x[5])
+        before = spans()
+        for pt in [(80, 95), (80, 297)]:
+            o = p.content_at(0, pt)
+            r = fitz.Rect(o["rect"])
+            p.move_content(0, o, fitz.Rect(r.x0 + 100, r.y0 + 60, r.x1 + 150, r.y1 + 90))   # sposta e "ridimensiona"
+        after = spans()
+        self.assertEqual([a[:4] for a in after], [b[:4] for b in before])
+        self.assertEqual([(a[4], a[5]) for a in after], [(172, 160), (172, 360)])
+        p.undo(); p.undo()
+        self.assertEqual(spans(), before)
+
+
+class TextFlowSelectionTests(unittest.TestCase):
+    def setUp(self):
+        d = fitz.open(); pg = d.new_page()
+        pg.insert_text((72, 100), "alfa beta gamma delta", fontsize=12)
+        pg.insert_text((72, 120), "epsilon zeta eta theta", fontsize=12)
+        pg.insert_text((72, 140), "iota kappa lambda mu", fontsize=12)
+        self.path = os.path.join(TMP, "flow.pdf"); d.save(self.path)
+        self.p = PdfDocument.open(self.path)
+
+    def test_text_between_multiline(self):
+        t = self.p.text_between(0, (130, 98), (110, 138))          # da "gamma" a "kappa"
+        self.assertEqual(t, "gamma delta\nepsilon zeta eta theta\niota kappa")
+        self.assertEqual(self.p.text_between(0, (110, 138), (130, 98)), t)   # direzione indifferente
+        self.assertEqual(self.p.text_between(0, (80, 98), (90, 98)), "alfa")
+
+    def test_markup_flow(self):
+        n = len(list(self.p.doc[0].annots() or []))
+        x = self.p.add_markup_flow(0, "hl", (130, 98), (110, 138))
+        pg = self.p.doc[0]
+        a = [a for a in pg.annots() if a.xref == x][0]
+        self.assertEqual(len(a.vertices) // 4, 3)                              # una fascia per riga
+        self.assertEqual(len(list(self.p.doc[0].annots())), n + 1)
+        self.p.add_markup_flow(0, "ul", (80, 98), (90, 98)); self.p.add_markup_flow(0, "st", (80, 118), (90, 118))
+        self.assertEqual(len(self.p.flow_rects(0, (130, 98), (110, 138))), 3)
+        with self.assertRaises(Exception):
+            e = PdfDocument(); e.doc.new_page(); e.add_markup_flow(0, "hl", (1, 1), (2, 2))

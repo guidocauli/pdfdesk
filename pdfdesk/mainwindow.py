@@ -122,6 +122,7 @@ class MainWindow(QMainWindow):
 
         v_ = self.view
         v_.rectDrawn.connect(self.on_rect)
+        v_.textFlowDrawn.connect(self.on_text_flow)
         v_.strokeDrawn.connect(self.on_stroke)
         v_.lineDrawn.connect(self.on_line)
         v_.pointClicked.connect(self.on_click)
@@ -507,6 +508,7 @@ class MainWindow(QMainWindow):
         # la barra Proprietà e i controlli contengono widget: restano sempre a icone/testo propri
         self.a_showfields.setChecked(str(s.value("view/fields", "true")).lower() == "true")
         self.view.set_show_fields(self.a_showfields.isChecked())
+        self.view.text_flow = str(s.value("view/textsel", "flow")) != "area"
         snap, show, gx, gy = grid_from_settings(s)
         self.a_gridsnap.setChecked(snap); self.a_gridshow.setChecked(show)
         self.view.set_grid(snap, show, gx, gy)
@@ -995,6 +997,27 @@ class MainWindow(QMainWindow):
         return True
 
     # ================================================================== salvataggio
+    def ask_keep_signatures(self) -> Optional[bool]:
+        """Documento firmato con modifiche permanenti: True = salvataggio incrementale (firme conservate),
+        False = riscrittura senza firme, None = annulla. Senza modifiche permanenti non chiede nulla (True)."""
+        if not (self.pdf.is_signed and self.pdf.has_permanent_changes):
+            return True
+        box = QMessageBox(QMessageBox.Question, "Firme digitali", "", parent=self)
+        box.setText("<b>Il documento firmato contiene modifiche permanenti.</b>")
+        box.setInformativeText(
+            "<b>Mantieni le firme</b>: il file è salvato in modo incrementale; la firma resta valida per la revisione "
+            "originale, ma i lettori PDF segnalano «modificato dopo la firma». Il contenuto eliminato, redatto o "
+            "sostituito <b>resta recuperabile nel file</b>: non adatto alle redazioni.\n\n"
+            "<b>Scarta le firme</b>: il file contiene soltanto il contenuto nuovo.")
+        b_keep = box.addButton("Mantieni le firme", QMessageBox.AcceptRole)
+        b_drop = box.addButton("Scarta le firme", QMessageBox.DestructiveRole)
+        box.addButton("Annulla", QMessageBox.RejectRole)
+        box.setDefaultButton(b_drop)
+        box.setEscapeButton(box.buttons()[-1])
+        box.exec()
+        c = box.clickedButton()
+        return True if c is b_keep else False if c is b_drop else None
+
     def confirm_permanent_overwrite(self) -> str:
         """Avviso prima di sovrascrivere il file originale con modifiche irreversibili.
         Restituisce «overwrite», «saveas» o «cancel»."""
@@ -1003,7 +1026,7 @@ class MainWindow(QMainWindow):
         box.setInformativeText(
             "Questo documento contiene redazioni o contenuti eliminati (testo, immagini, grafica): una volta salvato "
             "sopra l'originale, quei contenuti <b>non saranno più recuperabili</b>"
-            + (", e le firme digitali verranno rimosse" if self.pdf.is_signed else "") + ".\n\n"
+            + ".\n\n"
             "Si consiglia di usare <b>Salva con nome</b> per conservare l'originale.")
         b_as = box.addButton("Salva con nome…", QMessageBox.AcceptRole)
         b_ow = box.addButton("Sovrascrivi l'originale", QMessageBox.DestructiveRole)
@@ -1040,6 +1063,10 @@ class MainWindow(QMainWindow):
                     QMessageBox.information(self, "Standard", "Questo livello non è tra quelli convertibili: il file sarà salvato senza ripristino.")
                 else:
                     return False
+        keep = self.ask_keep_signatures()
+        if keep is None:
+            return False
+        self.pdf.keep_signatures = keep
         try:
             compress.write_atomic(self.pdf.path, self.pdf.current_bytes())
         except Exception as e:
@@ -1066,8 +1093,14 @@ class MainWindow(QMainWindow):
                 return False
             if c == "saveas":
                 return self.save_as()
+        keep_sig = True
+        if self.pdf.is_signed and dlg.preserves_signatures():
+            keep_sig = self.ask_keep_signatures()
+            if keep_sig is None:
+                return False
+            self.pdf.keep_signatures = keep_sig
         try:
-            if self.pdf.is_signed and dlg.preserves_signatures():
+            if self.pdf.is_signed and dlg.preserves_signatures() and keep_sig:
                 data = self.pdf.current_bytes()            # incrementale: firme intatte
                 before = len(data)
             else:
@@ -1183,7 +1216,7 @@ class MainWindow(QMainWindow):
         hints = {"sign": "Clicca o trascina sulla pagina per inserire la firma.", "image": "Clicca o trascina per inserire un'immagine.",
                  "edittext": "Clicca su un blocco di testo del PDF per modificarlo.",
                  "editobj": "Clicca un testo, un'immagine o una grafica del PDF: trascinalo per spostarlo, usa le maniglie per ridimensionarlo, Canc per eliminarlo.", "redact": "Clicca un testo, un'immagine o una grafica per segnarli, oppure trascina per segnare un'area; poi Modifica → Applica redazioni.",
-                 "textsel": "Trascina su un testo per copiarlo negli appunti.", "sigbox": "Trascina per disegnare il riquadro della firma digitale."}
+                 "textsel": "Trascina dal primo all'ultimo carattere per copiare il testo (anche su più righe); con Alt selezioni ad area.", "sigbox": "Trascina per disegnare il riquadro della firma digitale."}
         self.msg(hints.get(tool, ""), 8000) if tool in hints else None
         if tool == "sign" and not self.current_signature:
             QTimer.singleShot(0, self.pick_signature)
@@ -1213,6 +1246,21 @@ class MainWindow(QMainWindow):
     def on_line(self, tool: str, pno: int, a: QPointF, b: QPointF) -> None:
         st = self.style_for(tool)
         x = self.guard(self.pdf.add_line, pno, (a.x(), a.y()), (b.x(), b.y()), st["pen"], st["width"], tool == "arrow", st.get("opacity", 1.0))
+        if x is not None:
+            self.changed([pno])
+
+    def on_text_flow(self, tool: str, pno: int, a: QPointF, b: QPointF) -> None:
+        """Selezione del testo a righe (dal punto iniziale al finale, anche su più righe)."""
+        pa, pb = (a.x(), a.y()), (b.x(), b.y())
+        if tool == "textsel":
+            txt = self.pdf.text_between(pno, pa, pb)
+            if txt:
+                QApplication.clipboard().setText(txt)
+                self.msg(f"Copiati {len(txt)} caratteri negli appunti")
+            else:
+                self.msg("Nessun testo nella selezione")
+            return
+        x = self.guard(self.pdf.add_markup_flow, pno, tool, pa, pb)
         if x is not None:
             self.changed([pno])
 

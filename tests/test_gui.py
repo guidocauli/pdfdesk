@@ -53,6 +53,18 @@ class GuiTests(unittest.TestCase):
         self.v.fit_width(); wait(150); self.assertGreater(self.v.zoom, 0.3)
         self.w.grab().save(os.path.join(SHOT, "gui_base.png"))
 
+    def test_text_flow_selection(self):
+        pg = self.w.pdf.page(0)
+        ws = pg.get_text("words")
+        w0 = ws[0]; w1 = next(w for w in ws if (w[5], w[6]) != (w0[5], w0[6]) and w[1] > w0[3] + 2)
+        a = ((w0[0] + w0[2]) / 2, (w0[1] + w0[3]) / 2); b = ((w1[0] + w1[2]) / 2, (w1[1] + w1[3]) / 2)
+        self.w.set_tool("textsel"); self.drag(0, a, b)
+        txt = QApplication.clipboard().text()
+        self.assertIn(w0[4], txt); self.assertIn(w1[4], txt); self.assertIn("\n", txt)
+        self.w.set_tool("hl"); self.drag(0, a, b)
+        an = self.annots(); self.assertEqual(len(an), 1)
+        self.assertGreaterEqual(len(self.w.pdf.page(0).annots().__next__().vertices) // 4, 2)
+
     def test_pen_and_undo(self):
         self.w.set_tool("pen"); self.drag(0, (100, 400), (300, 450))
         a = self.annots(); self.assertEqual([x.type for x in a], [T_INK])

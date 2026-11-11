@@ -1271,6 +1271,14 @@ class PreferencesDialog(QDialog):
         row = QHBoxLayout(); row.addWidget(self.grid_x); row.addWidget(QLabel("×")); row.addWidget(self.grid_y); row.addWidget(self.grid_unit)
         f4.addRow(self.grid_snap); f4.addRow(self.grid_show); f4.addRow("Passo (orizzontale × verticale)", row)
         lay.addWidget(g4)
+        g5 = QGroupBox("Selezione del testo"); f5 = QFormLayout(g5)
+        self.textsel = QComboBox()
+        self.textsel.addItem("A righe (come in un lettore PDF): dal punto iniziale al finale", "flow")
+        self.textsel.addItem("Ad area (rettangolo)", "area")
+        self.textsel.setCurrentIndex(max(0, self.textsel.findData(str(s.value("view/textsel", "flow")))))
+        self.textsel.setToolTip("Vale per copia testo, evidenzia, sottolinea e barra. Tenendo premuto Alt durante il trascinamento si usa l'altra modalità.")
+        f5.addRow("Modalità", self.textsel)
+        lay.addWidget(g5)
         g3 = QGroupBox("Generale"); f3 = QFormLayout(g3)
         self.recent = QSpinBox(); self.recent.setRange(0, 30); self.recent.setValue(int(s.value("recent_max", 10)))
         self.recent.setToolTip("Quanti file mostrare in File → Apri recenti (0 = nessuno)")
@@ -1284,7 +1292,7 @@ class PreferencesDialog(QDialog):
     def _defaults(self) -> None:
         self.theme.setCurrentIndex(0); self.menus.setCurrentIndex(0); self.icons.setCurrentIndex(1); self.style.setCurrentIndex(0); self.rows.setCurrentIndex(0); self.locked.setChecked(False)
         self.zoom.setCurrentIndex(0); self.thumbs.setChecked(True); self.fields.setChecked(True); self.recent.setValue(10)
-        self.grid_snap.setChecked(False); self.grid_show.setChecked(False); self.grid_unit.setCurrentIndex(0); self.grid_x.setValue(5.0); self.grid_y.setValue(5.0)
+        self.grid_snap.setChecked(False); self.grid_show.setChecked(False); self.grid_unit.setCurrentIndex(0); self.grid_x.setValue(5.0); self.grid_y.setValue(5.0); self.textsel.setCurrentIndex(0)
 
     def store(self) -> None:
         s = settings()
@@ -1293,7 +1301,7 @@ class PreferencesDialog(QDialog):
         s.setValue("view/initzoom", self.zoom.currentIndex()); s.setValue("view/thumbs", self.thumbs.isChecked())
         s.setValue("view/fields", self.fields.isChecked()); s.setValue("recent_max", self.recent.value())
         s.setValue("grid/snap", self.grid_snap.isChecked()); s.setValue("grid/show", self.grid_show.isChecked())
-        s.setValue("grid/unit", self.grid_unit.currentData()); s.setValue("grid/x", self.grid_x.value()); s.setValue("grid/y", self.grid_y.value())
+        s.setValue("view/textsel", self.textsel.currentData()); s.setValue("grid/unit", self.grid_unit.currentData()); s.setValue("grid/x", self.grid_x.value()); s.setValue("grid/y", self.grid_y.value())
 
 
 
