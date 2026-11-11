@@ -1,6 +1,6 @@
 ; PDFDesk — Guido Cauli <guido.cauli@gmail.com>
 ; Installer per Windows (NSIS). Installa, AGGIORNA una versione precedente (stessa cartella, stessi collegamenti) e si disinstalla.
-; Compilazione: makensis -DVERSION=0.7.7 -DEXE=..\..\dist-wine\pdfdesk.exe -DOUTFILE=pdfdesk-0.7.7-windows-x86_64-setup.exe pdfdesk.nsi
+; Compilazione: makensis -DVERSION=0.7.8 -DEXE=..\..\dist-wine\pdfdesk.exe -DOUTFILE=pdfdesk-0.7.8-windows-x86_64-setup.exe pdfdesk.nsi
 ; Opzioni da riga di comando:  /S (silenzioso)   /D=C:\percorso (cartella, ultimo parametro)   /CERT (con /S: installa anche il certificato)
 ; L'eseguibile e questo installer sono firmati con il certificato autofirmato pdfdesk-sign.cer (vedi sign_windows.sh): la sezione
 ; «Certificato» lo aggiunge alle autorità attendibili e agli editori attendibili del computer, così Windows riconosce la firma.

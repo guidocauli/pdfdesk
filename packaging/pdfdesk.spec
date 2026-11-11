@@ -3,7 +3,7 @@
 import os, re, sys
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
-hidden = collect_submodules("pyhanko") + collect_submodules("pyhanko_certvalidator") + collect_submodules("pkcs11") + ["PIL.Image", "fontTools.subset", "aiohttp", "asn1crypto"]
+hidden = collect_submodules("pdfdesk") + collect_submodules("pyhanko") + collect_submodules("pyhanko_certvalidator") + collect_submodules("pkcs11") + ["PIL.Image", "fontTools.subset", "aiohttp", "asn1crypto"]
 datas = collect_data_files("pyhanko") + collect_data_files("pyhanko_certvalidator")
 excludes = ["tkinter", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.QtQml", "PySide6.QtQuick",
             "PySide6.Qt3DCore", "PySide6.QtMultimedia", "PySide6.QtSql", "PySide6.QtTest", "PySide6.QtNetwork",

@@ -175,6 +175,28 @@ def run() -> int:
         assert len(files) == 12 and all(os.path.getsize(f) > 100 for f in files), "esportazione parallela incompleta"
         return f"{parallel.cpu_total()} processori, fino a {parallel.max_workers()} in uso"
 
+    def exports():
+        from . import export
+        d = fitz.open(src)
+        done = []
+        for fmt, ext in (("txt", "txt"), ("docx", "docx"), ("odt", "odt")):
+            out = os.path.join(tmp, "esporta." + ext)
+            export.export(d, fmt, [0, 1], out)
+            assert os.path.getsize(out) > 20, f"esportazione {fmt} vuota"
+            done.append(fmt.upper())
+        d.close()
+        return ", ".join(done)
+
+    def modules():
+        import importlib.util
+        names = ("compress", "core", "export", "export_fixed", "extract", "fonts", "imgutil", "merge", "parallel", "paths", "pdfstd",
+                 "scan", "signing", "sigstore", "textbox", "updater", "selftest", "cli", "view", "dialogs", "mainwindow", "icons", "theme", "printing", "inmenu", "i18n", "i18n_en")
+        missing = [n for n in names if importlib.util.find_spec("pdfdesk." + n) is None]   # senza importarli (alcuni richiedono Qt)
+        assert not missing, "moduli assenti dal pacchetto: " + ", ".join(missing)       # es. scartati dalla compilazione per sintassi non valida
+        return f"{len(names)} moduli presenti"
+
+    step("moduli del programma", modules)
+    step("esportazione TXT/DOCX/ODT", exports)
     step("calcolo parallelo", par)
     step("interfaccia", gui)
     lines = [VERSION_LINE]

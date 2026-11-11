@@ -179,6 +179,8 @@ I pacchetti hanno il numero di versione nel nome: `pdfdesk-<versione>-linux-<arc
 
 Esecuzione da sorgente: `pip install -r requirements.txt && python run_pdfdesk.py [file.pdf]`.
 
+**Ambiente di compilazione uniforme.** Gli eseguibili si compilano tutti con **Python 3.11** e con le versioni *esatte* dei moduli elencate in `requirements.lock` (Windows, Linux e macOS identici; Python 3.11 perché Wine, che compila Windows da Linux, non supporta 3.12+). `build.sh`, `build.bat`, `build_windows_wine.sh` e il workflow installano il lock e lanciano `check_build_env.py`, che **blocca la build** se Python o un modulo differisce. Su Mac: `brew install python@3.11` (o python.org 3.11) e `PYTHON=python3.11 ./build.sh`. Nota: la versione di *patch* di Python (3.11.x) può variare da un sistema all'altro, il controllo vincola 3.11 e le librerie. Il sorgente va mantenuto compatibile con Python 3.11 (niente f-string con apici o barre rovesciate annidati: è l'errore che aveva escluso `export_fixed` dall'exe Windows).
+
 ### Installatore Windows
 
 `./build_installer.sh` (richiede `makensis`, pacchetto `nsis`) crea `dist/pdfdesk-<versione>-windows-x86_64-setup.exe` a partire da `dist-wine/pdfdesk.exe` o `dist/pdfdesk.exe`; lo script NSIS è in `packaging/windows/pdfdesk.nsi`. Le icone si rigenerano con `python packaging/make_icons.py` (cartella `packaging/assets/`).

@@ -242,7 +242,8 @@ def _wsp(cx: int, cy: int, geom: str, fill: Optional[str], stroke: Optional[str]
     tx = f"<wps:txbx><w:txbxContent>{content}</w:txbxContent></wps:txbx>" if content else ""
     body = ('<wps:bodyPr rot="0" vert="horz" wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t" anchorCtr="0"><a:noAutofit/></wps:bodyPr>'
             if content else "<wps:bodyPr/>")
-    return (f'<a:graphic><a:graphicData uri="{_WPS}"><wps:wsp><wps:cNvSpPr{" txBox=\"1\"" if txbox else ""}/>'
+    txb = ' txBox="1"' if txbox else ""                      # (niente apici con barra rovesciata dentro la f-string: Python 3.11 non li accetta)
+    return (f'<a:graphic><a:graphicData uri="{_WPS}"><wps:wsp><wps:cNvSpPr{txb}/>'
             f'<wps:spPr><a:xfrm{flip}><a:off x="0" y="0"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm><a:prstGeom prst="{geom}"><a:avLst/></a:prstGeom>'
             f'{fl}{ln}</wps:spPr>{tx}{body}</wps:wsp></a:graphicData></a:graphic>')
 

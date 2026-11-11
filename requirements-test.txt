@@ -1,0 +1,4 @@
+# PDFDesk — Guido Cauli <guido.cauli@gmail.com>
+# Moduli usati solo dai test (non entrano nell eseguibile): python -m pip install -r requirements-test.txt
+python-docx==1.2.0
+odfpy==1.4.1
