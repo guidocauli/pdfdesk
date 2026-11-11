@@ -50,3 +50,10 @@ def install_atexit() -> None:
     if not _installed:
         _installed = True
         atexit.register(close_all_widgets)
+
+
+def watchdog(seconds: int = 900) -> None:
+    """Per i test: se un processo resta bloccato (es. una finestra modale che nessuno chiude) dopo `seconds` secondi stampa dove
+    si trova ogni thread e termina, invece di tenere occupata per ore una macchina di GitHub Actions."""
+    import faulthandler
+    faulthandler.dump_traceback_later(seconds, exit=True)

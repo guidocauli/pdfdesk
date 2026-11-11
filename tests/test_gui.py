@@ -12,13 +12,14 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QWidgetAction
 from PySide6.QtWidgets import QApplication
 from make_samples import make_text_pdf
-from pdfdesk import shutdown as _shutdown; _shutdown.install_atexit()      # chiusura ordinata delle finestre lasciate aperte dai test
+from pdfdesk import shutdown as _shutdown; _shutdown.install_atexit(); _shutdown.watchdog()      # chiusura ordinata delle finestre lasciate aperte dai test
 from pdfdesk.mainwindow import MainWindow
 from pdfdesk import dialogs, signing, sigstore
 from pdfdesk.core import T_INK, T_SQUARE, T_STAMP, T_FREETEXT
 
 QSettings.setDefaultFormat(QSettings.IniFormat); QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, TMP)
 app = QApplication.instance() or QApplication([])
+from make_samples import block_modal_dialogs; block_modal_dialogs()
 SRC = os.path.join(TMP, "t.pdf"); make_text_pdf(SRC)
 SHOT = os.environ.get("SHOTS", TMP)
 

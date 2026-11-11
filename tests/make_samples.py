@@ -31,3 +31,19 @@ def make_image_pdf(path, pages=2, size=1800):
 if __name__ == "__main__":
     out = os.environ.get("OUT", "/tmp/pdfdesk-samples"); os.makedirs(out, exist_ok=True)
     make_text_pdf(f"{out}/testo.pdf"); make_image_pdf(f"{out}/immagini.pdf"); print(out)
+
+
+def block_modal_dialogs():
+    """Test: le finestre modali statiche (QMessageBox, QFileDialog…) non devono mai restare aperte aspettando un clic che non arriva:
+    fanno fallire il test indicando titolo e testo, invece di bloccarlo per sempre (visto su Windows con «Salvataggio non riuscito»)."""
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+    def boom(name):
+        def f(*a, **k):
+            txt = " | ".join(str(x) for x in a[1:4] if isinstance(x, str))
+            raise AssertionError(f"finestra modale inattesa {name}: {txt}")
+        return staticmethod(f)
+    for n in ("critical", "warning", "information", "question", "about"):
+        setattr(QMessageBox, n, boom("QMessageBox." + n))
+    for n in ("getOpenFileName", "getOpenFileNames", "getSaveFileName", "getExistingDirectory"):
+        setattr(QFileDialog, n, boom("QFileDialog." + n))

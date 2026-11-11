@@ -1,7 +1,7 @@
 # PDFDesk — Guido Cauli <guido.cauli@gmail.com>
 import ast, os, re, sys, unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from pdfdesk import shutdown as _shutdown; _shutdown.install_atexit()      # chiusura ordinata delle finestre lasciate aperte dai test
+from pdfdesk import shutdown as _shutdown; _shutdown.install_atexit(); _shutdown.watchdog()      # chiusura ordinata delle finestre lasciate aperte dai test
 from pdfdesk import i18n
 from pdfdesk.i18n_en import EN
 

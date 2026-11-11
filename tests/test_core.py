@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import pymupdf as fitz
 from PySide6.QtGui import QImage, QPainter, QColor
 from make_samples import make_text_pdf, make_image_pdf
-from pdfdesk import shutdown as _shutdown; _shutdown.install_atexit()      # chiusura ordinata delle finestre lasciate aperte dai test
+from pdfdesk import shutdown as _shutdown; _shutdown.install_atexit(); _shutdown.watchdog()      # chiusura ordinata delle finestre lasciate aperte dai test
 from pdfdesk.core import PdfDocument, T_INK, T_FREETEXT, T_SQUARE, T_CIRCLE, T_LINE, T_STAMP, T_REDACT
 from pdfdesk import compress, signing
 
@@ -334,16 +334,16 @@ class CliTests(unittest.TestCase):
         import subprocess, runpy
         env = dict(os.environ, PYTHONPATH=os.path.join(os.path.dirname(__file__), ".."), QT_QPA_PLATFORM="offscreen")
         py = sys.executable
-        out = subprocess.run([py, "-m", "pdfdesk", "--version"], capture_output=True, text=True, env=env).stdout
+        out = subprocess.run([py, "-m", "pdfdesk", "--version"], capture_output=True, text=True, encoding="utf-8", errors="replace", env=env).stdout
         self.assertIn("Guido Cauli <guido.cauli@gmail.com>", out); self.assertIn("PDFDesk", out)
-        h = subprocess.run([py, "-m", "pdfdesk", "--help"], capture_output=True, text=True, env=env).stdout
+        h = subprocess.run([py, "-m", "pdfdesk", "--help"], capture_output=True, text=True, encoding="utf-8", errors="replace", env=env).stdout
         self.assertIn("Guido Cauli <guido.cauli@gmail.com>", h)
         o = os.path.join(TMP, "cli_out.pdf")
-        r = subprocess.run([py, "-m", "pdfdesk", "--compress", IMG, o, "--preset", "low"], capture_output=True, text=True, env=env)
+        r = subprocess.run([py, "-m", "pdfdesk", "--compress", IMG, o, "--preset", "low"], capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
         self.assertEqual(r.returncode, 0, r.stderr); self.assertLess(os.path.getsize(o), os.path.getsize(IMG) * 0.2)
         p12 = os.path.join(TMP, "cli.p12"); signing.create_self_signed_p12(p12, "", "Cli")
         s = os.path.join(TMP, "cli_signed.pdf"); open(s, "wb").write(signing.sign_pdf_bytes(open(TXT, "rb").read(), signing.SignParams(p12, "")))
-        v = subprocess.run([py, "-m", "pdfdesk", "--verify", s], capture_output=True, text=True, env=env)
+        v = subprocess.run([py, "-m", "pdfdesk", "--verify", s], capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
         self.assertEqual(v.returncode, 0, v.stdout + v.stderr); self.assertIn("integra=sì", v.stdout)
 
 

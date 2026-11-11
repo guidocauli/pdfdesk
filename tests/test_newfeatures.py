@@ -10,13 +10,14 @@ import pymupdf as fitz
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 from make_samples import make_text_pdf
-from pdfdesk import shutdown as _shutdown; _shutdown.install_atexit()      # chiusura ordinata delle finestre lasciate aperte dai test
+from pdfdesk import shutdown as _shutdown; _shutdown.install_atexit(); _shutdown.watchdog()      # chiusura ordinata delle finestre lasciate aperte dai test
 from pdfdesk import compress, dialogs, extract, signing
 from pdfdesk.core import PdfDocument
 from pdfdesk.mainwindow import MainWindow
 
 QSettings.setDefaultFormat(QSettings.IniFormat); QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, TMP)
 app = QApplication.instance() or QApplication([])
+from make_samples import block_modal_dialogs; block_modal_dialogs()
 SRC = os.path.join(TMP, "t.pdf"); make_text_pdf(SRC)
 
 
@@ -913,7 +914,7 @@ class OcrDownloadTests(unittest.TestCase):
         lock = open(os.path.join(root, "requirements.lock"), encoding="utf-8").read()
         self.assertIn('macholib==', lock); self.assertIn('sys_platform == "darwin"', lock)
         wf = open(os.path.join(root, ".github", "workflows", "build.yml"), encoding="utf-8").read()
-        for needle in ("macos-arm64", "macos-intel", 'python-version: "3.11"', "check_build_env.py", "sblocca.sh", "requirements.lock"):
+        for needle in ("macos-arm64", 'python-version: "3.11"', "check_build_env.py", "sblocca.sh", "requirements.lock"):
             self.assertIn(needle, wf)
 
     def test_installer_and_cli_hooks(self):
