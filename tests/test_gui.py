@@ -431,6 +431,22 @@ class InWindowMenuTests(unittest.TestCase):
         QTest.mouseClick(row, Qt.LeftButton, Qt.NoModifier, row.rect().center()); wait(100)
         self.assertEqual(self.w.tool, "ellipse"); self.assertEqual(self.w.menus.panels, [])
 
+    def test_press_only_and_drag_release(self):
+        mb = self.w.menuBar()
+        act = next(a for a in mb.actions() if a.text().replace("&", "") == "Inserisci")
+        QTest.mouseClick(mb, Qt.LeftButton, Qt.NoModifier, mb.actionGeometry(act).center()); wait(60)
+        row = next(r_ for r_ in self.w.menus.panels[0].rows if r_.label.startswith("Ellisse"))
+        QTest.mousePress(row, Qt.LeftButton, Qt.NoModifier, row.rect().center()); wait(30)   # basta la pressione
+        self.assertEqual(self.w.tool, "ellipse"); self.assertEqual(self.w.menus.panels, [])
+        # premi sulla barra, trascina e rilascia sulla voce
+        QTest.mousePress(mb, Qt.LeftButton, Qt.NoModifier, mb.actionGeometry(act).center()); wait(60)
+        row = next(r_ for r_ in self.w.menus.panels[0].rows if r_.label.startswith("Rettangolo"))
+        from PySide6.QtCore import QPoint
+        g = row.mapToGlobal(row.rect().center())
+        ev_pos = mb.mapFromGlobal(g)
+        QTest.mouseRelease(mb, Qt.LeftButton, Qt.NoModifier, ev_pos); wait(100)
+        self.assertEqual(self.w.tool, "rect"); self.assertEqual(self.w.menus.panels, [])
+
     def test_submenu_and_escape(self):
         mb = self.w.menuBar()
         act = next(a for a in mb.actions() if a.text().replace("&", "") == "Visualizza")

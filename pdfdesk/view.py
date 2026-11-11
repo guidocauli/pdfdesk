@@ -412,7 +412,7 @@ class DocView(QGraphicsView):
             self.viewport().setCursor(Qt.OpenHandCursor)
         else:
             self.setDragMode(QGraphicsView.NoDrag)
-            cur = Qt.ArrowCursor if tool in ("select", "editobj") else (Qt.IBeamCursor if tool in ("textsel", "text") else Qt.CrossCursor)
+            cur = Qt.ArrowCursor if tool in ("select", "editobj") else (Qt.IBeamCursor if tool in ("textsel", "text", "hl", "ul", "st", "edittext") else Qt.CrossCursor)
             self.viewport().setCursor(cur)
         if tool != "select":
             self._sel.hide_handles = True

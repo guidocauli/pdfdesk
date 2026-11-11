@@ -49,13 +49,12 @@ class _Row(QWidget):
 
     def mousePressEvent(self, e) -> None:
         e.accept()                                    # senza questo il clic risale alla finestra e chiuderebbe la tendina
-        self._armed = e.button() == Qt.LeftButton
         self.panel.row_hover(self)                    # il clic vale anche se l'entrata del mouse non è stata recapitata
+        if e.button() == Qt.LeftButton:               # la voce scatta alla PRESSIONE: non dipende dal rilascio (clic veloce)
+            self.panel.row_clicked(self)
 
     def mouseReleaseEvent(self, e) -> None:
-        if e.button() == Qt.LeftButton and getattr(self, "_armed", True):
-            self._armed = False
-            self.panel.row_clicked(self)
+        e.accept()
 
     def paintEvent(self, e) -> None:
         p = QPainter(self)
@@ -262,6 +261,19 @@ class InMenuBar(QMenuBar):
             e.accept()
             return
         super().mousePressEvent(e)
+
+    def mouseReleaseEvent(self, e) -> None:
+        # stile «premi, trascina, rilascia»: la barra ha il grab del mouse, quindi il rilascio su una voce arriva qui
+        if self.mgr.enabled and self.mgr.panels and e.button() == Qt.LeftButton:
+            g = e.globalPosition().toPoint()
+            for pan in reversed(self.mgr.panels):
+                for r in pan.rows:
+                    if r.rect().contains(r.mapFromGlobal(g)) and r.isVisible():
+                        if not r.act.menu():
+                            pan.row_clicked(r)
+                        e.accept()
+                        return
+        super().mouseReleaseEvent(e)
 
     def mouseMoveEvent(self, e) -> None:
         if self.mgr.enabled and self.mgr.panels:
