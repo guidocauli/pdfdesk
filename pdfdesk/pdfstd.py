@@ -99,10 +99,16 @@ def _gs_env(gs: str) -> dict:
 
 def _icc_dir(gs: str) -> Optional[str]:
     base = os.path.dirname(os.path.dirname(gs))
-    for p in (os.path.join(base, "share", "iccprofiles"), "/usr/share/color/icc/ghostscript", "/usr/share/ghostscript/iccprofiles"):
+    # copia inclusa nel pacchetto, poi installazione di sistema: con e senza la cartella della versione (Homebrew recente
+    # installa in share/ghostscript/iccprofiles, senza «10.x»), accanto all'eseguibile gs trovato e nei percorsi usuali
+    fixed = [os.path.join(base, "share", "iccprofiles"), os.path.join(base, "share", "ghostscript", "iccprofiles"),
+             os.path.join(base, "iccprofiles"), "/usr/share/color/icc/ghostscript", "/usr/share/ghostscript/iccprofiles",
+             "/opt/homebrew/share/ghostscript/iccprofiles", "/usr/local/share/ghostscript/iccprofiles"]
+    for p in fixed:
         if os.path.isfile(os.path.join(p, "srgb.icc")):
             return p
-    for p in sorted(glob.glob("/usr/share/ghostscript/*/iccprofiles")) + sorted(glob.glob("/opt/homebrew/share/ghostscript/*/iccprofiles")) \
+    for p in sorted(glob.glob(os.path.join(base, "share", "ghostscript", "*", "iccprofiles"))) \
+            + sorted(glob.glob("/usr/share/ghostscript/*/iccprofiles")) + sorted(glob.glob("/opt/homebrew/share/ghostscript/*/iccprofiles")) \
             + sorted(glob.glob("/usr/local/share/ghostscript/*/iccprofiles")) + sorted(glob.glob(r"C:\Program Files\gs\gs*\iccprofiles")):
         if os.path.isfile(os.path.join(p, "srgb.icc")):
             return p

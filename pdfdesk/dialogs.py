@@ -54,7 +54,17 @@ class ModalPlacer(QObject):
                 self._place(obj)
             except Exception:
                 pass
+            # alcune piattaforme (macOS) ridimensionano la finestra subito dopo averla mostrata: si ricentra una seconda volta
+            QTimer.singleShot(0, obj, self._replace_later)
         return False
+
+    def _replace_later(self) -> None:
+        for d in QApplication.topLevelWidgets():
+            if isinstance(d, _QDialog) and d.isVisible() and d is not self.main and d.parentWidget() is None:
+                try:
+                    self._place(d)
+                except Exception:
+                    pass
 
     def _place(self, dlg) -> None:
         mw = self.main
