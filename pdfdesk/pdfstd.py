@@ -623,6 +623,30 @@ def _xobject_has_transparency(pdf: pikepdf.Pdf) -> list:
     return sorted(set(out))
 
 
+def _unembedded_fonts(pdf) -> set:
+    """Nomi dei font non incorporati in qualunque punto del file (pagine, aspetto delle annotazioni e dei campi, XObject)."""
+    bad = set()
+    for obj in pdf.objects:
+        try:
+            if not isinstance(obj, pikepdf.Dictionary) or obj.get("/Type") != "/Font":
+                continue
+            sub = str(obj.get("/Subtype", ""))
+            if sub == "/Type3":
+                continue
+            f = obj
+            if sub == "/Type0":
+                desc = obj.get("/DescendantFonts")
+                if not desc or len(desc) == 0:
+                    continue
+                f = desc[0]
+            fd = f.get("/FontDescriptor")
+            if fd is None or not any(k in fd for k in ("/FontFile", "/FontFile2", "/FontFile3")):
+                bad.add(str(obj.get("/BaseFont", "?")).lstrip("/"))
+        except Exception:
+            continue
+    return bad
+
+
 def check(data: bytes, key: str) -> Report:
     """Verifica la conformità allo standard indicato. Per PDF/A usa veraPDF se disponibile, più il controllo interno."""
     std = STANDARDS[key]
@@ -649,6 +673,9 @@ def check(data: bytes, key: str) -> Report:
             issues.append(("errore", "mancano i metadati XMP"))
         if "/AA" in root or "/JavaScript" in (root.get("/Names") or {}):
             issues.append(("errore", "JavaScript o azioni automatiche presenti"))
+        nf = _unembedded_fonts(pdf)                  # tutti i font del file, anche nelle annotazioni (non solo nelle pagine)
+        if nf:
+            issues.append(("errore", "font non incorporati: " + ", ".join(sorted(nf)[:6])))
         if std.family == "A":
             want = f"PDF/A-{std.part}{std.conformance.lower()}"
             if declared != want:
@@ -684,7 +711,7 @@ def check(data: bytes, key: str) -> Report:
                 for f in p.get_fonts(full=True):
                     if f[1] in ("n/a", "") and f[2] != "Type3":
                         bad.add(f[3])
-            if bad:
+            if bad and not nf:
                 issues.append(("errore", "font non incorporati: " + ", ".join(sorted(bad)[:6])))
             if not std.cmyk:
                 pass

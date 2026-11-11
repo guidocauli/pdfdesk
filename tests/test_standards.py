@@ -27,10 +27,25 @@ def hard_doc():
     d.add_shape(0, "rect", fitz.Rect(300, 400, 420, 460), (1, 0, 0), (1, .8, .8), 2, 0.4)       # opacità parziale
     d.add_markup(0, "hl", fitz.Rect(72, 50, 300, 64))                                          # fusione Multiply
     d.add_ink(0, [[(300, 500), (380, 540), (460, 510)]], (0, .6, 0), 3)
-    if fonts.resolve("@DejaVu Sans Book") or os.path.exists(DEJAVU):
+    if os.path.exists(DEJAVU):                       # il file serve davvero (su macOS DejaVu di solito non c'è)
         code = fonts.add_user_font(DEJAVU)
         d.add_text(0, fitz.Rect(300, 300, 540, 360), "Привет мир Ελληνικά €", 14, code, (0, 0, .5), (1, 1, .8), 1)
     return d.current_bytes()
+
+
+class InternalCheckTests(unittest.TestCase):
+    """Controllo interno (usato dove manca veraPDF): un font non incorporato in un'annotazione rende il file non conforme."""
+
+    @unittest.skipUnless(GS, "Ghostscript non installato")
+    def test_unembedded_font_in_annotation_detected(self):
+        out = pdfstd.convert(hard_doc(), "pdfa-2b", title="Prova")
+        d = fitz.open("pdf", out)
+        d[0].add_freetext_annot(fitz.Rect(100, 600, 300, 650), "Nota aggiunta", fontsize=14, fontname="helv")
+        data = d.tobytes()
+        import unittest.mock as m
+        with m.patch.object(pdfstd, "find_verapdf", return_value=None):
+            rep = pdfstd.check(data, "pdfa-2b")
+        self.assertFalse(rep.ok, rep.text()); self.assertIn("font non incorporati", rep.text())
 
 
 @unittest.skipUnless(GS, "Ghostscript non installato")
@@ -49,7 +64,7 @@ class StandardTests(unittest.TestCase):
                                                         "pdfx-1a": "PDF/X-1a:2001", "pdfx-3": "PDF/X-3:2002", "pdfx-4": "PDF/X-4"}[key])
                 doc = fitz.open("pdf", out)
                 text = doc[0].get_text()
-                for w in ("Titolo", "Guido", "Привет", "Ελληνικά"):                              # il testo resta testo, anche non latino
+                for w in ("Titolo", "Guido") + (("Привет", "Ελληνικά") if os.path.exists(DEJAVU) else ()):                              # il testo resta testo, anche non latino
                     self.assertIn(w, text, f"{key}: «{w}» perso")
                 self.assertLess(len(doc[0].get_images()), 3, "la pagina è stata rasterizzata")
                 self.assertLess(len(out), 400_000)
