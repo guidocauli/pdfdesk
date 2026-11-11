@@ -29,15 +29,14 @@ jobs:
           if [ -n "$SEL" ] && [ "$SEL" != "all" ]; then
             ALL=$(echo "$ALL" | python3 -c "import json,sys; print(json.dumps([m for m in json.load(sys.stdin) if m['name'].startswith('$SEL')]))")
           fi
-          echo "matrix=$ALL" >> "$GITHUB_OUTPUT"
+          echo "matrix={\"include\":$ALL}" >> "$GITHUB_OUTPUT"
   build:
     needs: check
     timeout-minutes: 45
     if: needs.check.outputs.skip != 'true'
     strategy:
       fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.check.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.check.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
