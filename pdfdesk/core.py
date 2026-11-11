@@ -241,7 +241,11 @@ class PdfDocument:
     @classmethod
     def open(cls, path: str, password: Optional[str] = None) -> "PdfDocument":
         d = cls()
-        doc = fitz.open(path)
+        # il documento si apre dai byte in memoria, non dal file: MuPDF terrebbe il file aperto e su Windows non si potrebbe
+        # più sostituirlo salvando («Accesso negato» in os.replace). Così il file su disco resta libero.
+        with open(path, "rb") as f:
+            raw = f.read()
+        doc = fitz.open("pdf", raw)
         if doc.needs_pass:
             if not password or not doc.authenticate(password):
                 doc.close()
@@ -252,8 +256,7 @@ class PdfDocument:
             # il documento firmato si modifica in memoria come ogni altro (annulla/ripeti compresi); il salvataggio
             # accoda le differenze al file originale, che resta intatto (firme valide sulla loro revisione)
             doc.close()
-            with open(path, "rb") as f:
-                d._orig = f.read()
+            d._orig = raw
             doc = fitz.open("pdf", d._orig)
             if doc.needs_pass:
                 doc.authenticate(password or "")

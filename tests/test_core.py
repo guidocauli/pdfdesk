@@ -347,5 +347,42 @@ class CliTests(unittest.TestCase):
         self.assertEqual(v.returncode, 0, v.stdout + v.stderr); self.assertIn("integra=sì", v.stdout)
 
 
+class FileHandleTests(unittest.TestCase):
+    """Windows: un documento aperto non deve tenere bloccato il file, altrimenti salvarci sopra fallisce («Accesso negato»)."""
+
+    def test_open_does_not_keep_file_open(self):
+        import tempfile
+        from pdfdesk import compress
+        from pdfdesk.core import PdfDocument
+        p = os.path.join(tempfile.mkdtemp(), "h.pdf")
+        d0 = fitz.open(); d0.new_page().insert_text((72, 72), "x"); d0.save(p); d0.close()
+        doc = PdfDocument.open(p)
+        if os.path.isdir("/proc/self/fd"):
+            held = [os.readlink(os.path.join("/proc/self/fd", fd)) for fd in os.listdir("/proc/self/fd")
+                    if os.path.exists(os.path.join("/proc/self/fd", fd))]
+            self.assertNotIn(os.path.realpath(p), held)
+        compress.write_atomic(p, doc.current_bytes())                # sovrascrive il file aperto
+        self.assertEqual(fitz.open(p).page_count, 1)
+
+    def test_write_atomic_retries_and_cleans_up(self):
+        import tempfile, unittest.mock as m
+        from pdfdesk import compress
+        p = os.path.join(tempfile.mkdtemp(), "r.pdf"); open(p, "wb").write(b"old")
+        real = os.replace; calls = []
+
+        def flaky(a, b):
+            calls.append(1)
+            if len(calls) < 3:
+                raise PermissionError("in uso")
+            real(a, b)
+        with m.patch.object(compress.os, "replace", flaky), m.patch("time.sleep"):
+            compress.write_atomic(p, b"new")
+        self.assertEqual(open(p, "rb").read(), b"new"); self.assertEqual(len(calls), 3)
+        with m.patch.object(compress.os, "replace", side_effect=PermissionError("bloccato")), m.patch("time.sleep"):
+            with self.assertRaises(PermissionError):
+                compress.write_atomic(p, b"x")
+        self.assertFalse(os.path.exists(p + ".pdfdesk-tmp")); self.assertEqual(open(p, "rb").read(), b"new")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

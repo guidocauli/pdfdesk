@@ -142,6 +142,7 @@ def sane_scan(dev: str, prm: ScanParams, folder: str, progress: Optional[Callabl
 # ---------------------------------------------------------------------- WIA (Windows)
 _WIA_LIST = r"""
 $ErrorActionPreference='Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8      # nomi degli scanner con lettere accentate
 $m = New-Object -ComObject WIA.DeviceManager
 foreach ($d in $m.DeviceInfos) { if ($d.Type -eq 1) { "{0}|{1}" -f $d.DeviceID, $d.Properties.Item('Name').Value } }
 """
@@ -495,6 +496,6 @@ def ocr_languages() -> list[str]:
         return []
     try:
         r = _run([t, "--list-langs"], timeout=20, env=_tess_env(t))
-        return [x.strip() for x in r.stdout.decode().splitlines()[1:] if x.strip() and x.strip() != "osd"]
+        return [x.strip() for x in r.stdout.decode("utf-8", "replace").splitlines()[1:] if x.strip() and x.strip() != "osd"]
     except Exception:
         return []

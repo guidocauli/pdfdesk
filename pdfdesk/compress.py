@@ -193,10 +193,30 @@ def format_analysis(a: dict) -> str:
 
 
 def write_atomic(path: str, data: bytes) -> None:
+    """Scrive su un file temporaneo e lo sostituisce all'originale. Su Windows antivirus e indicizzatore tengono a volte il file
+    aperto per un attimo: si riprova qualche volta; se non riesce si toglie il temporaneo e si segnala l'errore."""
+    import time
     tmp = path + ".pdfdesk-tmp"
     with open(tmp, "wb") as f:
         f.write(data)
-    os.replace(tmp, path)
+    for attempt in range(6):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == 5:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+                raise
+            time.sleep(0.25 * (attempt + 1))
+        except OSError:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            raise
 
 
 def human_size(n: int) -> str:

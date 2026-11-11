@@ -32,7 +32,14 @@ def probe(path: str, password: str = "") -> dict:
 
 
 def _open_source(path: str, password: str) -> fitz.Document:
-    d = fitz.open(path)
+    # dai byte, non dal file: se l'uscita coincide con un sorgente, su Windows il file aperto non si potrebbe sovrascrivere
+    with open(path, "rb") as f:
+        data = f.read()
+    ext = os.path.splitext(path)[1].lstrip(".").lower() or "pdf"
+    try:
+        d = fitz.open(stream=data, filetype=ext)
+    except Exception:
+        d = fitz.open(stream=data)
     if d.is_pdf:
         if d.needs_pass and not d.authenticate(password or ""):
             raise MergeError(tr("{}: password mancante o errata").format(os.path.basename(path)))
