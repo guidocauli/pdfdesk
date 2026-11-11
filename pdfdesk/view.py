@@ -82,6 +82,20 @@ class SelectionBox(QGraphicsItem):
         return None
 
 
+GRID_UNITS = {"mm": 72 / 25.4, "cm": 720 / 25.4, "pt": 1.0, "in": 72.0}
+
+
+def grid_from_settings(s) -> tuple:
+    """(aggancia, mostra, passo orizzontale in pt, passo verticale in pt) dalle impostazioni."""
+    on = lambda k, d: str(s.value(k, d)).lower() == "true"
+    f = GRID_UNITS.get(str(s.value("grid/unit", "mm")), GRID_UNITS["mm"])
+    try:
+        gx, gy = float(s.value("grid/x", 5.0)) * f, float(s.value("grid/y", 5.0)) * f
+    except (TypeError, ValueError):
+        gx = gy = 5.0 * GRID_UNITS["mm"]
+    return on("grid/snap", "false"), on("grid/show", "false"), max(0.5, gx), max(0.5, gy)
+
+
 class DocView(QGraphicsView):
     rectDrawn = Signal(str, int, QRectF)               # strumento, pagina, rettangolo (punti pagina)
     strokeDrawn = Signal(str, int, list)               # strumento, pagina, [(x, y)]
@@ -122,6 +136,7 @@ class DocView(QGraphicsView):
         self.sel_page = -1
         self.sel_xref = -1
         self.sel_info: Optional[AnnotInfo] = None
+        self.grid_snap, self.grid_show, self.grid = False, False, (14.17, 14.17)
         self.sel_content: Optional[dict] = None
         self._ghost: Optional[QGraphicsPixmapItem] = None
         self._drag = None
@@ -180,6 +195,70 @@ class DocView(QGraphicsView):
         self._field_items = []
         self._draw_fields()
         self._schedule()
+
+    # ------------------------------------------------------------------ griglia
+    def set_grid(self, snap: bool, show: bool, gx: float, gy: float) -> None:
+        """Griglia con passi arbitrari (punti): `snap` aggancia agli incroci quando si spostano/ridimensionano gli oggetti."""
+        self.grid_snap, self.grid_show = bool(snap), bool(show)
+        self.grid = (max(0.5, float(gx)), max(0.5, float(gy)))
+        self.viewport().update()
+
+    @staticmethod
+    def _snap1(v: float, step: float) -> float:
+        return round(v / step) * step
+
+    def _snap_move(self, r: QRectF, pno: int) -> QRectF:
+        """Sposta `r` perché un suo spigolo (sinistro o destro, alto o basso: il più vicino) cada su un incrocio della griglia."""
+        if not getattr(self, "grid_snap", False) or pno >= len(self.page_rects):
+            return r
+        o = self.page_rects[pno].topLeft()
+        gx, gy = self.grid
+        l, rt, t, b = r.left() - o.x(), r.right() - o.x(), r.top() - o.y(), r.bottom() - o.y()
+        dx = min((self._snap1(l, gx) - l, self._snap1(rt, gx) - rt), key=abs)
+        dy = min((self._snap1(t, gy) - t, self._snap1(b, gy) - b), key=abs)
+        return r.translated(dx, dy)
+
+    def _snap_resize(self, r: QRectF, handle: str, pno: int) -> QRectF:
+        if not getattr(self, "grid_snap", False) or pno >= len(self.page_rects):
+            return r
+        o = self.page_rects[pno].topLeft()
+        gx, gy = self.grid
+        x0, y0, x1, y1 = r.left(), r.top(), r.right(), r.bottom()
+        if "w" in handle:
+            x0 = o.x() + self._snap1(x0 - o.x(), gx)
+        if "e" in handle:
+            x1 = o.x() + self._snap1(x1 - o.x(), gx)
+        if "n" in handle:
+            y0 = o.y() + self._snap1(y0 - o.y(), gy)
+        if "s" in handle:
+            y1 = o.y() + self._snap1(y1 - o.y(), gy)
+        out = QRectF(QPointF(x0, y0), QPointF(x1, y1)).normalized()
+        if out.width() < 4 or out.height() < 4:
+            return r
+        return out
+
+    def drawForeground(self, painter, rect) -> None:
+        super().drawForeground(painter, rect)
+        if not getattr(self, "grid_show", False) or not self.page_rects:
+            return
+        gx, gy = self.grid
+        sc = self.transform().m11()
+        if gx * sc < 4 or gy * sc < 4:          # troppo fitta per essere utile
+            return
+        pen = QPen(QColor(70, 130, 220, 110), 0)
+        painter.setPen(pen)
+        for pr in self.page_rects:
+            vis = pr.intersected(rect)
+            if vis.isEmpty():
+                continue
+            x = pr.left() + max(0, int((vis.left() - pr.left()) // gx)) * gx
+            while x <= vis.right():
+                painter.drawLine(QPointF(x, vis.top()), QPointF(x, vis.bottom()))
+                x += gx
+            y = pr.top() + max(0, int((vis.top() - pr.top()) // gy)) * gy
+            while y <= vis.bottom():
+                painter.drawLine(QPointF(vis.left(), y), QPointF(vis.right(), y))
+                y += gy
 
     # ------------------------------------------------------------------ evidenziazione campi del modulo
     def set_show_fields(self, on: bool) -> None:
@@ -582,6 +661,7 @@ class DocView(QGraphicsView):
             pr = self.page_rects[d["page"]]
             r.moveLeft(min(max(r.left(), pr.left() - r.width() + 10), pr.right() - 10))
             r.moveTop(min(max(r.top(), pr.top() - r.height() + 10), pr.bottom() - 10))
+            r = self._snap_move(r, d["page"])
             self._sel.set_rect(r)
             self._place_ghost(r)
         elif k == "resize":
@@ -589,6 +669,9 @@ class DocView(QGraphicsView):
                               keep_ratio=not (e.modifiers() & Qt.ShiftModifier) and (
                                   (self.sel_info is not None and self.sel_info.type == 13) or
                                   (self.sel_content is not None and self.sel_content["kind"] == "image")))
+            if not (self.sel_info is not None and self.sel_info.type == 13) and not (
+                    self.sel_content is not None and self.sel_content["kind"] == "image" and not (e.modifiers() & Qt.ShiftModifier)):
+                r = self._snap_resize(r, d["handle"], d["page"])
             self._sel.set_rect(r)
             self._place_ghost(r)
 

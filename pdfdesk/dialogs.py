@@ -242,9 +242,12 @@ class PropertiesPanel(QWidget):
 
 # ---------------------------------------------------------------------- miniature
 class ThumbPanel(QListWidget):
+    """Miniature delle pagine: l'ingrandimento segue automaticamente la larghezza della colonna."""
     pageSelected = Signal(int)
     pageMoved = Signal(int, int)
     action = Signal(str, list)
+    PAD = 14                 # spazio laterale e tra le miniature
+    MAX_W = 420              # larghezza massima di una miniatura
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -257,10 +260,14 @@ class ThumbPanel(QListWidget):
         self.setDragDropMode(QAbstractItemView.InternalMove)
         self.setDefaultDropAction(Qt.MoveAction)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.customContextMenuRequested.connect(self._menu)
         self.currentRowChanged.connect(lambda r: r >= 0 and self.pageSelected.emit(r))
         self.model().rowsMoved.connect(self._rows_moved)
         self._lock = False
+        self._pix: dict = {}                 # pagina → miniatura a risoluzione piena
+        self._timer = QTimer(self); self._timer.setSingleShot(True); self._timer.setInterval(60)
+        self._timer.timeout.connect(self.relayout)
 
     def _rows_moved(self, parent, start, end, dest, row) -> None:
         if self._lock:
@@ -270,15 +277,45 @@ class ThumbPanel(QListWidget):
     def set_count(self, n: int) -> None:
         self._lock = True
         self.clear()
+        self._pix = {}
         for i in range(n):
             it = QListWidgetItem(str(i + 1))
             it.setTextAlignment(Qt.AlignHCenter)
             self.addItem(it)
         self._lock = False
 
+    # --- ingrandimento automatico
+    def thumb_width(self) -> int:
+        """Larghezza della miniatura: tutta la colonna, meno i margini (e la barra di scorrimento, già esclusa dal viewport)."""
+        return int(max(48, min(self.MAX_W, self.viewport().width() - self.PAD * 2)))
+
+    def relayout(self) -> None:
+        w = self.thumb_width()
+        ratio = max([p.height() / p.width() for p in self._pix.values() if p.width()] or [1.414])
+        h = int(w * min(ratio, 2.2))
+        txt = self.fontMetrics().height() + 6
+        self.setIconSize(QSize(w, h))
+        self.setGridSize(QSize(w + self.PAD * 2, h + txt + self.PAD))
+        for i, pm in self._pix.items():
+            self._apply(i, pm)
+
+    def _apply(self, i: int, pm: QPixmap) -> None:
+        if 0 <= i < self.count():
+            sz = self.iconSize()
+            self.item(i).setIcon(pm.scaled(sz, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+    def resizeEvent(self, e) -> None:
+        super().resizeEvent(e)
+        self._timer.start()
+
     def set_thumb(self, i: int, pm: QPixmap) -> None:
         if 0 <= i < self.count():
-            self.item(i).setIcon(pm)
+            first = not self._pix
+            self._pix[i] = pm
+            if first:
+                self.relayout()
+            else:
+                self._apply(i, pm)
 
     def mark_current(self, i: int) -> None:
         if 0 <= i < self.count() and self.currentRow() != i:
@@ -1214,6 +1251,26 @@ class PreferencesDialog(QDialog):
         self.fields.setChecked(str(s.value("view/fields", "true")).lower() == "true")
         f2.addRow("Ingrandimento iniziale", self.zoom); f2.addRow(self.thumbs); f2.addRow(self.fields)
         lay.addWidget(g2)
+        g4 = QGroupBox("Griglia"); f4 = QFormLayout(g4)
+        self.grid_snap = QCheckBox("Aggancia gli oggetti agli incroci della griglia quando li sposti o ridimensioni")
+        self.grid_snap.setChecked(str(s.value("grid/snap", "false")).lower() == "true")
+        self.grid_show = QCheckBox("Mostra la griglia sulle pagine")
+        self.grid_show.setChecked(str(s.value("grid/show", "false")).lower() == "true")
+        self.grid_unit = QComboBox()
+        for u, t in (("mm", "millimetri"), ("cm", "centimetri"), ("pt", "punti"), ("in", "pollici")):
+            self.grid_unit.addItem(t, u)
+        self.grid_unit.setCurrentIndex(max(0, self.grid_unit.findData(str(s.value("grid/unit", "mm")))))
+        self.grid_x = QDoubleSpinBox(); self.grid_y = QDoubleSpinBox()
+        for sp, k in ((self.grid_x, "grid/x"), (self.grid_y, "grid/y")):
+            sp.setDecimals(2); sp.setRange(0.1, 500.0); sp.setSingleStep(0.5)
+            try:
+                sp.setValue(float(s.value(k, 5.0)))
+            except (TypeError, ValueError):
+                sp.setValue(5.0)
+        self.grid_x.setToolTip("Distanza tra le linee verticali"); self.grid_y.setToolTip("Distanza tra le linee orizzontali")
+        row = QHBoxLayout(); row.addWidget(self.grid_x); row.addWidget(QLabel("×")); row.addWidget(self.grid_y); row.addWidget(self.grid_unit)
+        f4.addRow(self.grid_snap); f4.addRow(self.grid_show); f4.addRow("Passo (orizzontale × verticale)", row)
+        lay.addWidget(g4)
         g3 = QGroupBox("Generale"); f3 = QFormLayout(g3)
         self.recent = QSpinBox(); self.recent.setRange(0, 30); self.recent.setValue(int(s.value("recent_max", 10)))
         self.recent.setToolTip("Quanti file mostrare in File → Apri recenti (0 = nessuno)")
@@ -1227,6 +1284,7 @@ class PreferencesDialog(QDialog):
     def _defaults(self) -> None:
         self.theme.setCurrentIndex(0); self.menus.setCurrentIndex(0); self.icons.setCurrentIndex(1); self.style.setCurrentIndex(0); self.rows.setCurrentIndex(0); self.locked.setChecked(False)
         self.zoom.setCurrentIndex(0); self.thumbs.setChecked(True); self.fields.setChecked(True); self.recent.setValue(10)
+        self.grid_snap.setChecked(False); self.grid_show.setChecked(False); self.grid_unit.setCurrentIndex(0); self.grid_x.setValue(5.0); self.grid_y.setValue(5.0)
 
     def store(self) -> None:
         s = settings()
@@ -1234,6 +1292,8 @@ class PreferencesDialog(QDialog):
         s.setValue("ui/rows", self.rows.currentIndex()); s.setValue("ui/locked", self.locked.isChecked())
         s.setValue("view/initzoom", self.zoom.currentIndex()); s.setValue("view/thumbs", self.thumbs.isChecked())
         s.setValue("view/fields", self.fields.isChecked()); s.setValue("recent_max", self.recent.value())
+        s.setValue("grid/snap", self.grid_snap.isChecked()); s.setValue("grid/show", self.grid_show.isChecked())
+        s.setValue("grid/unit", self.grid_unit.currentData()); s.setValue("grid/x", self.grid_x.value()); s.setValue("grid/y", self.grid_y.value())
 
 
 

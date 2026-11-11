@@ -190,7 +190,8 @@ class PdfDocument:
         self.modified = False
         self.version = 0                   # incrementa a ogni cambiamento (invalida cache di rendering)
         self.signed_count = 0
-        self._workfile: Optional[str] = None
+        self._orig: Optional[bytes] = None        # byte originali di un PDF firmato (base del salvataggio incrementale)
+        self._password: Optional[str] = None
         self._undo: list[bytes] = []
         self._redo: list[bytes] = []
         self._last_label = ""
@@ -220,15 +221,15 @@ class PdfDocument:
             if not password or not doc.authenticate(password):
                 doc.close()
                 raise PasswordRequired(path)
+        d._password = password
         d.signed_count = cls._count_signatures(doc)
         if d.signed_count:
-            # copia di lavoro su file: serve per il salvataggio incrementale che conserva le firme
+            # il documento firmato si modifica in memoria come ogni altro (annulla/ripeti compresi); il salvataggio
+            # accoda le differenze al file originale, che resta intatto (firme valide sulla loro revisione)
             doc.close()
-            fd, tmp = tempfile.mkstemp(suffix=".pdf", prefix="pdfdesk-")
-            os.close(fd)
-            shutil.copyfile(path, tmp)
-            d._workfile = tmp
-            doc = fitz.open(tmp)
+            with open(path, "rb") as f:
+                d._orig = f.read()
+            doc = fitz.open("pdf", d._orig)
             if doc.needs_pass:
                 doc.authenticate(password or "")
         d.doc = doc
@@ -257,14 +258,7 @@ class PdfDocument:
             return 0
 
     def close(self) -> None:
-        try:
-            self.doc.close()
-        finally:
-            if self._workfile and os.path.exists(self._workfile):
-                try:
-                    os.remove(self._workfile)
-                except OSError:
-                    pass
+        self.doc.close()
 
     # ------------------------------------------------------------------ proprietà
     @property
@@ -277,11 +271,11 @@ class PdfDocument:
 
     @property
     def can_undo(self) -> bool:
-        return bool(self._undo) and not self.is_signed
+        return bool(self._undo)
 
     @property
     def can_redo(self) -> bool:
-        return bool(self._redo) and not self.is_signed
+        return bool(self._redo)
 
     def page(self, pno: int) -> fitz.Page:
         return self.doc[pno]
@@ -299,14 +293,13 @@ class PdfDocument:
 
     def _begin(self, label: str = "") -> None:
         """Da chiamare PRIMA di ogni modifica: salva lo stato per annulla/ripeti."""
-        if not self.is_signed:
-            self._undo.append(self._snapshot())
-            total = sum(len(b) for b in self._undo)
-            while len(self._undo) > 1 and total > self.MAX_UNDO_BYTES:
-                total -= len(self._undo.pop(0))
-                self._destr = [max(1, m - 1) if m != self._ALWAYS else m for m in self._destr]
-            self._redo.clear()
-            self._redo_destr.clear()
+        self._undo.append(self._snapshot())
+        total = sum(len(b) for b in self._undo)
+        while len(self._undo) > 1 and total > self.MAX_UNDO_BYTES:
+            total -= len(self._undo.pop(0))
+            self._destr = [max(1, m - 1) if m != self._ALWAYS else m for m in self._destr]
+        self._redo.clear()
+        self._redo_destr.clear()
         self._last_label = label
         self.modified = True
         self.version += 1
@@ -1168,8 +1161,10 @@ class PdfDocument:
         self.doc.move_page(src, -1 if dest_before >= self.page_count else dest_before)
 
     def duplicate_page(self, pno: int) -> None:
+        if not 0 <= pno < self.page_count:
+            raise PdfError("pagina inesistente")
         self._begin("duplica pagina")
-        self.doc.fullcopy_page(pno, pno + 1)
+        self.doc.fullcopy_page(pno, pno + 1 if pno + 1 < self.page_count else -1)      # -1 = in fondo
 
     def insert_blank(self, after: int) -> None:
         w, h = self.page_size(min(max(after, 0), self.page_count - 1))
@@ -1197,25 +1192,88 @@ class PdfDocument:
     # ------------------------------------------------------------------ uscita
     def current_bytes(self) -> bytes:
         """Stato corrente come PDF. Per i PDF firmati: salvataggio incrementale (firme intatte)."""
+        self._pending_drop = False
         if self.is_signed and self.has_permanent_changes:
             # un salvataggio incrementale conserverebbe la revisione precedente con il contenuto eliminato:
-            # si riscrive il file per intero (le firme, già invalide dopo la modifica, vengono rimosse)
-            self.drop_signatures()
+            # si riscrive il file per intero senza le firme (ormai invalide). Il documento aperto resta com'è
+            # (annulla compreso) finché il salvataggio non va a buon fine: vedi mark_saved().
+            cur = fitz.open("pdf", self.doc.tobytes(garbage=0))
+            for page in cur:
+                for w in list(page.widgets() or []):
+                    if w.field_type == fitz.PDF_WIDGET_TYPE_SIGNATURE:
+                        page.delete_widget(w)
+            out = cur.tobytes(garbage=1, deflate=True)
+            cur.close()
+            self._pending_drop = True
+            return out
         if self.is_signed:
-            self._save_incremental()
-            with open(self._workfile, "rb") as f:
-                return f.read()
+            return self._signed_incremental()
         return self.doc.tobytes(garbage=1, deflate=True)
 
-    def _save_incremental(self) -> None:
-        if not self._workfile:
-            raise PdfError("salvataggio incrementale non disponibile")
-        if self.doc.can_save_incrementally():
-            self.doc.saveIncr()
-        else:
-            raise PdfError("il documento firmato non può essere salvato in modo incrementale")
+    def _signed_incremental(self) -> bytes:
+        """PDF firmato: i byte originali (con le firme) + una nuova revisione con soltanto gli oggetti cambiati."""
+        if not self._undo:                       # nessuna modifica (o tutto annullato): il file resta identico all'originale
+            return self._orig
+        import tempfile
+        cur = fitz.open("pdf", self.doc.tobytes(garbage=0))
+        fd, tmp = tempfile.mkstemp(suffix=".pdf", prefix="pdfdesk-")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(self._orig)
+            base = fitz.open(tmp)
+            if base.needs_pass:
+                base.authenticate(self._password or "")
+            nb, nc = base.xref_length(), cur.xref_length()
+            while base.xref_length() < nc:
+                base.get_new_xref()
+
+            def safe(fn, *a):
+                try:
+                    return fn(*a)
+                except Exception:
+                    return None
+            def ident(doc, x):
+                """Identità semantica dell'oggetto: insieme chiave/valore se è un dizionario (l'ordine delle chiavi non conta)."""
+                keys = safe(doc.xref_get_keys, x) or []
+                if keys:
+                    return ("d", frozenset((k, tuple(safe(doc.xref_get_key, x, k) or ())) for k in keys))
+                return ("t", safe(doc.xref_object, x, False))
+            for x in range(1, nc):
+                oc = safe(cur.xref_object, x, False)
+                if oc is None or oc.strip() == "null":
+                    continue                                     # contenitori (ObjStm, XRef) e oggetti eliminati: non si toccano
+                if x < nb:
+                    tb = safe(base.xref_get_key, x, "Type")
+                    if tb and tb[1] in ("ObjStm", "XRef", "/ObjStm", "/XRef"):
+                        continue
+                st = bool(cur.xref_is_stream(x))
+                sc = cur.xref_stream_raw(x) if st else None
+                if x < nb and safe(base.xref_object, x, False) is not None:
+                    sb = safe(base.xref_stream_raw, x) if safe(base.xref_is_stream, x) else None
+                    if ident(cur, x) == ident(base, x) and sc == sb:
+                        continue
+                base.update_object(x, oc)
+                if st:
+                    base.update_stream(x, sc, new=True, compress=False)
+            for key in ("Info", "Root"):               # metadati nuovi o radice cambiata
+                v = safe(cur.xref_get_key, -1, key)
+                if v and v[0] == "xref" and v != safe(base.xref_get_key, -1, key):
+                    base.xref_set_key(-1, key, v[1])
+            base.saveIncr()
+            base.close()
+            with open(tmp, "rb") as f:
+                return f.read()
+        finally:
+            cur.close()
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
 
     def mark_saved(self, path: str) -> None:
+        if getattr(self, "_pending_drop", False) and self.is_signed:
+            self.drop_signatures()               # il file salvato non ha più le firme: il documento aperto si allinea
+        self._pending_drop = False
         self.path = os.path.abspath(path)
         self.modified = False
         self._destr = []
@@ -1228,8 +1286,9 @@ class PdfDocument:
                 if w.field_type == fitz.PDF_WIDGET_TYPE_SIGNATURE:
                     page.delete_widget(w)
         data = self.doc.tobytes(garbage=1, deflate=True)
-        self._replace_doc(data)
         self.signed_count = 0
+        self._orig = None
+        self._replace_doc(data)
         self._undo.clear()
         self._redo.clear()
         self.modified = True

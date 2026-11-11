@@ -302,3 +302,98 @@ class ContextMenuTests(unittest.TestCase):
         self.assertEqual(got, [0])
         self.assertIsNotNone(v.sel_content)
         self.assertEqual(v.sel_content["kind"], "image")
+
+
+class SignedUndoTests(unittest.TestCase):
+    def setUp(self):
+        d = fitz.open(); pg = d.new_page(); pg.insert_text((72, 100), "Documento firmato", fontsize=14)
+        pg.draw_rect(fitz.Rect(72, 200, 172, 260), color=(1, 0, 0), fill=(0, 1, 0))
+        b = d.tobytes(); d.close()
+        p12 = os.path.join(TMP, "su.p12"); signing.create_self_signed_p12(p12, "pw", "Prova", "CNR", "a@b.it")
+        self.orig = signing.sign_pdf_bytes(b, signing.SignParams(p12, "pw"))
+        self.path = os.path.join(TMP, "signed_undo.pdf"); open(self.path, "wb").write(self.orig)
+
+    def sig(self, p):
+        import hashlib
+        return hashlib.md5(p.doc[0].get_pixmap(dpi=40).samples).hexdigest()
+
+    def test_undo_redo_and_incremental_save(self):
+        p = PdfDocument.open(self.path); self.assertTrue(p.is_signed)
+        s0 = self.sig(p)
+        o = p.content_at(0, (120, 230)); p.move_content(0, o, fitz.Rect(o["rect"]) + (40, 40, 40, 40)); s1 = self.sig(p)
+        p.add_shape(0, "rect", fitz.Rect(300, 300, 400, 360), (1, 0, 0), None, 2, 1.0); s2 = self.sig(p)
+        p.set_metadata({"title": "T"}, {})
+        self.assertTrue(p.can_undo)
+        p.undo(); p.undo(); self.assertEqual(self.sig(p), s1)
+        p.undo(); self.assertEqual(self.sig(p), s0); self.assertFalse(p.can_undo)
+        self.assertEqual(p.current_bytes(), self.orig)                      # tutto annullato: file identico
+        p.redo(); p.redo(); p.redo(); self.assertEqual(self.sig(p), s2)
+        out = p.current_bytes()
+        self.assertTrue(out.startswith(self.orig))                          # byte firmati intatti
+        r = fitz.open("pdf", out); self.assertEqual(r.page_count, 1); self.assertEqual(r.metadata["title"], "T")
+        st = signing.verify_pdf_bytes(out)[0]; self.assertTrue(st.intact and st.valid)
+
+    def test_permanent_op_defers_signature_drop(self):
+        p = PdfDocument.open(self.path)
+        o = p.content_at(0, (120, 230)); p.delete_content(0, o)
+        out = p.current_bytes()                                             # non altera il documento aperto
+        self.assertTrue(p.is_signed); self.assertTrue(p.can_undo)
+        self.assertFalse(out.startswith(self.orig))
+        self.assertEqual(signing.verify_pdf_bytes(out), [])
+        p.current_bytes(); self.assertTrue(p.is_signed)
+        p.mark_saved(self.path)                                             # salvataggio riuscito: firme scartate
+        self.assertFalse(p.is_signed)
+
+    def test_object_streams_document(self):
+        make_text_pdf(os.path.join(TMP, "t3.pdf"))
+        data = compress.optimize_bytes(open(os.path.join(TMP, "t3.pdf"), "rb").read(), compress.SaveOptions("medium"))
+        p12 = os.path.join(TMP, "su2.p12"); signing.create_self_signed_p12(p12, "pw", "T")
+        signed = signing.sign_pdf_bytes(data, signing.SignParams(p12, "pw", "R", "L", "F"))
+        path = os.path.join(TMP, "s_objstm.pdf"); open(path, "wb").write(signed)
+        p = PdfDocument.open(path); n = p.doc.page_count
+        p.add_shape(0, "rect", fitz.Rect(100, 400, 200, 450), (1, 0, 0), None, 2, 1.0)
+        out = p.current_bytes(); self.assertEqual(fitz.open("pdf", out).page_count, n)
+        self.assertTrue(signing.verify_pdf_bytes(out)[0].valid)
+
+
+class GridAndThumbsTests(unittest.TestCase):
+    def test_grid_settings_and_snap(self):
+        from PySide6.QtCore import QRectF
+        s = QSettings(); s.setValue("grid/unit", "mm"); s.setValue("grid/x", 10); s.setValue("grid/y", 5)
+        s.setValue("grid/snap", True)
+        from pdfdesk.view import grid_from_settings
+        snap, show, gx, gy = grid_from_settings(s)
+        self.assertTrue(snap); self.assertFalse(show)
+        self.assertAlmostEqual(gx, 10 * 72 / 25.4, places=3); self.assertAlmostEqual(gy, 5 * 72 / 25.4, places=3)
+        s.remove("grid/snap"); s.remove("grid/unit"); s.remove("grid/x"); s.remove("grid/y")
+        path = os.path.join(TMP, "gr.pdf"); pdf_with_images(path)
+        w = MainWindow(); w.show(); self.assertTrue(w.open_path(path)); v = w.view
+        v.set_grid(True, True, 20.0, 10.0)
+        o = v.page_rects[0].topLeft()
+        r = v._snap_move(QRectF(o.x() + 38, o.y() + 48, 50, 30), 0)           # sinistra 38 → 40; alto 48 → 50
+        self.assertAlmostEqual(r.left() - o.x(), 40, places=3); self.assertAlmostEqual(r.top() - o.y(), 50, places=3)
+        r2 = v._snap_resize(QRectF(o.x() + 33, o.y() + 47, 50, 30), "se", 0)  # spigolo basso-destro: 83→80, 77→80
+        self.assertAlmostEqual(r2.right() - o.x(), 80, places=3); self.assertAlmostEqual(r2.bottom() - o.y(), 80, places=3)
+        v.set_grid(False, False, 20.0, 10.0)
+        r3 = QRectF(o.x() + 33, o.y() + 47, 50, 30)
+        self.assertEqual(v._snap_move(r3, 0), r3)                              # senza aggancio nulla cambia
+        from pdfdesk.dialogs import PreferencesDialog
+        d = PreferencesDialog(None); d.grid_snap.setChecked(True); d.grid_x.setValue(12.5); d.grid_unit.setCurrentIndex(d.grid_unit.findData("pt")); d.store()
+        self.assertTrue(w.a_gridsnap is not None)
+        w.apply_prefs(); self.assertTrue(v.grid_snap); self.assertAlmostEqual(v.grid[0], 12.5, places=3)
+        QSettings().clear()
+        w.pdf.modified = False; w.close()
+
+    def test_thumbs_follow_column_width(self):
+        from PySide6.QtGui import QPixmap
+        from pdfdesk.dialogs import ThumbPanel
+        t = ThumbPanel(); t.resize(200, 400); t.show(); app.processEvents()
+        t.set_count(3)
+        for i in range(3):
+            pm = QPixmap(300, 424); pm.fill(); t.set_thumb(i, pm)
+        t.relayout(); w1 = t.iconSize().width()
+        t.resize(360, 400); app.processEvents(); t.relayout(); w2 = t.iconSize().width()
+        self.assertGreater(w2, w1)
+        self.assertLessEqual(w2, t.viewport().width())
+        self.assertLessEqual(abs(t.item(0).icon().actualSize(t.iconSize()).width() - t.iconSize().width()), 2)
+        t.resize(2000, 400); t.relayout(); self.assertLessEqual(t.iconSize().width(), ThumbPanel.MAX_W)

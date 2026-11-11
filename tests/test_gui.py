@@ -183,7 +183,7 @@ class GuiTests(unittest.TestCase):
         st2 = signing.verify_pdf_bytes(open(out, "rb").read())
         self.assertTrue(st2[0].intact and st2[0].valid, st2[0].summary)
         self.assertEqual(len(fitz.open(out)[0].get_text()) > 0, True)
-        self.assertFalse(self.w.a_undo.isEnabled())
+        self.assertTrue(self.w.a_undo.isEnabled())            # anche i documenti firmati si possono annullare
 
 
 class UiLayoutTests(unittest.TestCase):

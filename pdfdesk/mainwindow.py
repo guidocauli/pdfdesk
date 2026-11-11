@@ -18,7 +18,7 @@ from .inmenu import InMenuBar, wayland_session
 from .dialogs import (AboutDialog, MergeDialog, ScanDialog, ExportDialog, ExtractImagesDialog, ImageOutDialog, MetadataDialog, FieldTextDialog, StandardDialog, PropertiesPanel, SaveDialog, SignatureLibraryDialog, SignDialog, TextDialog,
                       ThumbPanel, VerifyDialog, CertDialog, PreferencesDialog, settings)
 from .icons import app_icon, icon
-from .view import DocView, pix_to_qimage
+from .view import DocView, grid_from_settings, pix_to_qimage
 from . import export as exporter
 from . import imgutil
 from . import extract as extractor
@@ -241,6 +241,10 @@ class MainWindow(QMainWindow):
         self.a_formtool = A("&Compila modulo", lambda: self.set_tool("form"), "", "Clicca sui campi per compilarli")
         self.a_showfields = A("Evidenzia i campi del modulo", self.toggle_fields, "")
         self.a_showfields.setCheckable(True); self.a_showfields.setChecked(True)
+        self.a_gridshow = A("Mostra la griglia", lambda: self._toggle_grid("grid/show", self.a_gridshow), "", "Mostra la griglia (passo impostato in Preferenze)")
+        self.a_gridsnap = A("Aggancia alla griglia", lambda: self._toggle_grid("grid/snap", self.a_gridsnap), "", "Spostando o ridimensionando gli oggetti, gli spigoli si agganciano agli incroci della griglia")
+        for a_ in (self.a_gridshow, self.a_gridsnap):
+            a_.setCheckable(True)
         self.a_find = A("&Cerca…", self.find_open, "Ctrl+F")
         self.a_find_next = A("Cerca successivo", lambda: self.find_step(1), "F3")
         self.a_find_prev = A("Cerca precedente", lambda: self.find_step(-1), "Shift+F3")
@@ -346,6 +350,8 @@ class MainWindow(QMainWindow):
         m = mb.addMenu("M&oduli")
         m.addAction(self.a_formtool)
         m.addAction(self.a_showfields)
+        m.addAction(self.a_gridshow)
+        m.addAction(self.a_gridsnap)
         m.addSeparator()
         m.addAction(self.a_flatten)
         m = mb.addMenu("&Firma")
@@ -501,6 +507,9 @@ class MainWindow(QMainWindow):
         # la barra Proprietà e i controlli contengono widget: restano sempre a icone/testo propri
         self.a_showfields.setChecked(str(s.value("view/fields", "true")).lower() == "true")
         self.view.set_show_fields(self.a_showfields.isChecked())
+        snap, show, gx, gy = grid_from_settings(s)
+        self.a_gridsnap.setChecked(snap); self.a_gridshow.setChecked(show)
+        self.view.set_grid(snap, show, gx, gy)
         if relayout:
             top = [tb for tb in self.bars if self.toolBarArea(tb) in (Qt.TopToolBarArea, Qt.NoToolBarArea)]
             for tb in top:
@@ -517,6 +526,10 @@ class MainWindow(QMainWindow):
                 self.addToolBar(Qt.TopToolBarArea, tb)
                 tb.show()
         self._rebuild_recent()
+
+    def _toggle_grid(self, key: str, act) -> None:
+        settings().setValue(key, act.isChecked())
+        self.apply_prefs()
 
     def preferences(self) -> None:
         old_rows = int(settings().value("ui/rows", 0))
@@ -559,13 +572,13 @@ class MainWindow(QMainWindow):
         self._sync_tabs()
         self.a_undo.setEnabled(bool(has and self.pdf.can_undo))
         self.a_redo.setEnabled(bool(has and self.pdf.can_redo))
-        self.a_undo.setToolTip("Annulla" if not (has and self.pdf.is_signed) else "Annulla non disponibile nei documenti firmati")
+        self.a_undo.setToolTip("Annulla")
         name = os.path.basename(self.pdf.path) if has and self.pdf.path else ("Senza titolo" if has else "")
         mod = "*" if has and self.pdf.modified else ""
         self.setWindowTitle(f"{mod}{name} — PDFDesk" if has else "PDFDesk")
         if has and self.pdf.is_signed:
             self.banner_lbl.setText(f"🔒 Questo PDF contiene {self.pdf.signed_count} firma/e digitale/i. Le modifiche vengono aggiunte "
-                                    "come revisione successiva (le firme restano valide); annulla e compressione non sono disponibili.")
+                                    "come revisione successiva (le firme restano riconoscibili nella loro revisione); la compressione non è disponibile.")
             self.banner.show()
         else:
             self.banner.hide()
@@ -637,18 +650,14 @@ class MainWindow(QMainWindow):
         p = self._thumb_queue.pop(0)
         try:
             w, h = self.pdf.page_size(p)
-            sc = min(106 / w, 146 / h)
-            img = pix_to_qimage(self.pdf.render(p, sc))
-            canvas = QPixmap(112, 152)
-            canvas.fill(QColor(0, 0, 0, 0))
+            sc = min(300 / w, 420 / h)               # a risoluzione abbondante: il pannello la ridimensiona alla larghezza della colonna
+            pm = QPixmap.fromImage(pix_to_qimage(self.pdf.render(p, sc)))
             from PySide6.QtGui import QPainter, QPen
-            pt = QPainter(canvas)
-            pm = QPixmap.fromImage(img)
-            x, y = (112 - pm.width()) // 2, (152 - pm.height()) // 2
-            pt.drawPixmap(x, y, pm)
+            pt = QPainter(pm)
             pt.setPen(QPen(QColor(120, 120, 120), 1))
-            pt.drawRect(x, y, pm.width() - 1, pm.height() - 1)
+            pt.drawRect(0, 0, pm.width() - 1, pm.height() - 1)
             pt.end()
+            canvas = pm
             self.thumbs.set_thumb(p, canvas)
         except Exception:
             pass
@@ -1062,10 +1071,15 @@ class MainWindow(QMainWindow):
                 data = self.pdf.current_bytes()            # incrementale: firme intatte
                 before = len(data)
             else:
-                if self.pdf.is_signed:
-                    self.pdf.drop_signatures()
-                    self.view.reload()
                 raw = self.pdf.doc.tobytes(garbage=0)
+                if self.pdf.is_signed:                     # le firme si scartano solo a salvataggio riuscito (mark_saved)
+                    cur = fitz.open("pdf", raw)
+                    for page in cur:
+                        for w in list(page.widgets() or []):
+                            if w.field_type == fitz.PDF_WIDGET_TYPE_SIGNATURE:
+                                page.delete_widget(w)
+                    raw = cur.tobytes(garbage=0); cur.close()
+                    self.pdf._pending_drop = True
                 before = len(raw)
                 opts.runner = self.run_bg
                 data = compress.optimize_bytes(raw, opts)
