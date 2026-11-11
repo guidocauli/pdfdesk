@@ -156,8 +156,6 @@ class SignatureDataTests(unittest.TestCase):
         dialogs.VerifyDialog(None, [])
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class FixesTests(unittest.TestCase):
@@ -656,3 +654,7 @@ class UpdaterTests(unittest.TestCase):
         finally:
             srv.shutdown()
         self.assertEqual(r, {"version": "9.9.9", "url": "https://example.org/r", "notes": "note"})
+
+
+if __name__ == "__main__":
+    unittest.main()

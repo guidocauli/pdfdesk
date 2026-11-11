@@ -306,6 +306,8 @@ class ThumbPanel(QListWidget):
         self.setIconSize(QSize(110, 150))
         self.setGridSize(QSize(132, 188))
         self.setResizeMode(QListWidget.Adjust)
+        self.setLayoutMode(QListWidget.SinglePass)
+        self.setUniformItemSizes(True)
         self.setMovement(QListWidget.Static)
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.setDragDropMode(QAbstractItemView.InternalMove)
@@ -332,6 +334,7 @@ class ThumbPanel(QListWidget):
         for i in range(n):
             it = QListWidgetItem(str(i + 1))
             it.setTextAlignment(Qt.AlignHCenter)
+            it.setSizeHint(self.gridSize())
             self.addItem(it)
         self._lock = False
 
@@ -347,8 +350,11 @@ class ThumbPanel(QListWidget):
         txt = self.fontMetrics().height() + 6
         self.setIconSize(QSize(w, h))
         self.setGridSize(QSize(w + self.PAD * 2, h + txt + self.PAD))
+        for i in range(self.count()):                 # dimensione fissa: la posizione non dipende dal formato della singola pagina
+            self.item(i).setSizeHint(self.gridSize())
         for i, pm in self._pix.items():
             self._apply(i, pm)
+        self.doItemsLayout()                          # ricalcola subito tutte le posizioni con la nuova griglia
 
     def _apply(self, i: int, pm: QPixmap) -> None:
         if 0 <= i < self.count():

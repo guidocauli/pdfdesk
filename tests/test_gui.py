@@ -384,8 +384,6 @@ class StandardGuiTests(unittest.TestCase):
         self.assertEqual(d.pick.key(), "pdfa-2b"); d._check()
         self.assertIn("CONFORME", d.out.toPlainText())
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
 
 
 class ThemeTests(unittest.TestCase):
@@ -780,3 +778,24 @@ class UpdateCheckGuiTests(unittest.TestCase):
         def boom(): raise OSError("offline")
         self._run(boom)
         self.assertEqual(self.seen[0][0], "warn")
+
+
+class ThumbAlignmentTests(unittest.TestCase):
+    def test_mixed_page_sizes_stay_in_one_column(self):
+        import time, tempfile
+        d = fitz.open()
+        for sz in [(595, 842)] * 4 + [(842, 595), (595, 842), (300, 400)] + [(595, 842)] * 4:
+            d.new_page(width=sz[0], height=sz[1]).insert_text((50, 80), "x")
+        path = os.path.join(tempfile.mkdtemp(), "mix.pdf"); d.save(path)
+        w = MainWindow(path); w.resize(1100, 700); w.show()
+        end = time.time() + 6
+        while time.time() < end:
+            QApplication.processEvents(); time.sleep(0.01)
+        t = w.thumbs
+        xs = {t.visualItemRect(t.item(i)).x() for i in range(t.count())}
+        self.assertEqual(len(xs), 1, xs)
+        w.close()
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
