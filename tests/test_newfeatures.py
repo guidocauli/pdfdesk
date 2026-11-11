@@ -814,5 +814,94 @@ class ParallelTests(unittest.TestCase):
         pdf.close()
 
 
+class OcrDownloadTests(unittest.TestCase):
+    """Tesseract: percorsi di ricerca, percorso scelto dall'utente, download con controllo SHA-256, installatore."""
+
+    def setUp(self):
+        from pdfdesk import scan
+        self.scan = scan; self.tmp = tempfile.mkdtemp(prefix="ocr-")
+        self.addCleanup(scan.set_tesseract_path, "")
+        self._which = scan.shutil.which; scan.shutil.which = lambda n: None
+        self.addCleanup(setattr, scan.shutil, "which", self._which)
+
+    def _fake(self, d):
+        os.makedirs(d, exist_ok=True); p = os.path.join(d, self.scan._tess_exe()); open(p, "w").write("x"); return p
+
+    def test_pins(self):
+        import re
+        self.assertRegex(self.scan.TESSERACT_SHA256, r"^[0-9a-f]{64}$")
+        self.assertTrue(self.scan.TESSERACT_URL.startswith("https://"))
+        self.assertIn(self.scan.TESSERACT_VERSION, self.scan.TESSERACT_URL)
+
+    def test_user_path_file_or_folder(self):
+        p = self._fake(os.path.join(self.tmp, "t"))
+        self.scan.set_tesseract_path(p); self.assertEqual(self.scan.tesseract_path(), p)
+        self.scan.set_tesseract_path(os.path.dirname(p)); self.assertEqual(self.scan.tesseract_path(), p)
+        self.scan.set_tesseract_path(os.path.join(self.tmp, "nonesiste")); self.assertIsNone(self.scan.tesseract_path())
+
+    def test_auto_search_dirs(self):
+        p = self._fake(os.path.join(self.tmp, "auto"))
+        self.addCleanup(setattr, self.scan, "ocr_search_dirs", self.scan.ocr_search_dirs)
+        self.scan.ocr_search_dirs = lambda: [os.path.join(self.tmp, "vuota"), os.path.dirname(p)]
+        self.assertEqual(self.scan.find_tesseract(), p); self.assertEqual(self.scan.tesseract_path(), p)
+
+    def test_download_sha256(self):
+        import hashlib
+        src = os.path.join(self.tmp, "a.bin"); open(src, "wb").write(b"dati" * 5000)
+        url = "file://" + src; ok = hashlib.sha256(b"dati" * 5000).hexdigest()
+        dst = os.path.join(self.tmp, "b.bin"); seen = []
+        self.scan._download(url, dst, lambda a, b: seen.append((a, b)) or True, ok)
+        self.assertEqual(os.path.getsize(dst), 20000); self.assertTrue(seen)
+        bad = os.path.join(self.tmp, "c.bin")
+        with self.assertRaises(self.scan.ScanError):
+            self.scan._download(url, bad, None, "0" * 64)
+        self.assertFalse(os.path.exists(bad))                      # file con hash errato: cancellato
+        with self.assertRaises(self.scan.ScanError):
+            self.scan._download(url, bad, lambda a, b: False)      # annullato dall'utente
+        self.assertFalse(os.path.exists(bad))
+        with self.assertRaises(self.scan.ScanError):
+            self.scan._download("file://" + os.path.join(self.tmp, "assente"), bad)
+
+    def test_install_only_windows_and_hint(self):
+        if sys.platform != "win32":
+            with self.assertRaises(self.scan.ScanError):
+                self.scan.install_tesseract(os.path.join(self.tmp, "x"))
+        self.assertTrue(self.scan.ocr_hint())
+
+    def test_install_hash_mismatch_stops_before_running(self):
+        """Con hash non corrispondente l'installer scaricato non viene eseguito."""
+        import unittest.mock as m
+        src = os.path.join(self.tmp, "setup.exe"); open(src, "wb").write(b"MZfinto")
+        with m.patch.object(self.scan.sys, "platform", "win32"), m.patch.object(self.scan, "TESSERACT_URL", "file://" + src), \
+                m.patch.object(self.scan.subprocess, "run") as run:
+            with self.assertRaises(self.scan.ScanError):
+                self.scan.install_tesseract(os.path.join(self.tmp, "dest"))
+            run.assert_not_called()
+
+    def test_installer_and_cli_hooks(self):
+        nsi = open(os.path.join(os.path.dirname(__file__), "..", "packaging", "windows", "pdfdesk.nsi"), encoding="utf-8").read()
+        for needle in ('Section "$(SEC_OCR)" SecOcr', "--install-ocr", '"/OCR"', "OcrInstalled"):
+            self.assertIn(needle, nsi)
+        from pdfdesk import cli
+        if sys.platform != "win32":
+            self.assertEqual(cli.main(["--install-ocr", os.path.join(self.tmp, "d")]), 1)     # fuori da Windows: errore con il comando da usare
+
+    def test_wia_script_no_case_insensitive_clash(self):
+        """PowerShell non distingue maiuscole/minuscole: una variabile con lo stesso nome di un parametro tipizzato ne eredita il tipo
+        (bug 0.7.8: «$dev = $info.Connect()» sovrascriveva il parametro [string] -Dev e l'oggetto diventava testo/null)."""
+        import re
+        sc = self.scan._WIA_SCAN
+        params = [x.lower() for x in re.findall(r"\[\w+\]\$(\w+)", sc.split("\n")[1])]
+        assigned = [x.lower() for x in re.findall(r"^\s*\$(\w+)\s*=", sc, re.M)]
+        self.assertEqual(set(params) & set(assigned), set())
+        self.assertIn("-DevId", open(self.scan.__file__, encoding="utf-8").read())
+
+    def test_preferences_has_ocr_path(self):
+        d = dialogs.PreferencesDialog(None); self.assertTrue(hasattr(d, "ocr_path")); d.ocr_path.setText(self.tmp); d.store()
+        from pdfdesk.mainwindow import settings
+        self.assertEqual(str(settings().value("ocr/path", "")), self.tmp)
+        d.ocr_path.clear(); d.store(); d.close()
+
+
 if __name__ == "__main__":
     unittest.main()

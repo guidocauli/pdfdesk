@@ -1441,6 +1441,35 @@ class PreferencesDialog(QDialog):
         self.cores.setToolTip(tr("Quanti processori usare, al bisogno, per le operazioni lunghe su documenti con molte pagine (esportazione in immagini o testo, ricerca). "
                                  "Con «Automatico» si usano al massimo tutti i processori meno uno, così il computer resta reattivo."))
         f6.addRow(tr("Processori da usare"), self.cores)
+        from . import scan as _scan
+        self.ocr_path = QLineEdit(str(s.value("ocr/path", "")))
+        self.ocr_path.setPlaceholderText(tr("Automatico (cerca Tesseract da solo)"))
+        self.ocr_path.setToolTip(tr("Percorso di tesseract (file eseguibile o cartella che lo contiene), per l'OCR nelle scansioni. Vuoto = ricerca automatica nel PATH e nelle "
+                                    "cartelle usuali (anche C:\\Program Files\\Tesseract-OCR): non serve modificare la variabile PATH."))
+        b_browse = QPushButton(tr("Sfoglia…")); b_auto = QPushButton(tr("Cerca"))
+        orow = QHBoxLayout(); orow.addWidget(self.ocr_path, 1); orow.addWidget(b_browse); orow.addWidget(b_auto)
+        self.ocr_state = QLabel()
+
+        def ocr_refresh():
+            _scan.set_tesseract_path(self.ocr_path.text())
+            p = _scan.tesseract_path()
+            self.ocr_state.setText(tr("Trovato: {}").format(p) if p else tr("Tesseract non trovato") + " — " + _scan.ocr_hint())
+            self.ocr_state.setWordWrap(True)
+
+        def ocr_browse():
+            f, _ = QFileDialog.getOpenFileName(self, tr("Percorso di Tesseract"), self.ocr_path.text() or os.path.expanduser("~"))
+            if f:
+                self.ocr_path.setText(f)
+
+        def ocr_auto():
+            self.ocr_path.clear(); ocr_refresh()
+            if not _scan.tesseract_path():
+                QMessageBox.information(self, tr("OCR"), tr("Tesseract non trovato") + "\n" + _scan.ocr_hint())
+        b_browse.clicked.connect(ocr_browse); b_auto.clicked.connect(ocr_auto); self.ocr_path.editingFinished.connect(ocr_refresh)
+        self._ocr_prev = _scan._TESS_OVERRIDE
+        ocr_refresh()
+        f6.addRow(tr("Percorso di Tesseract (OCR)"), orow)
+        f6.addRow("", self.ocr_state)
         lay.addWidget(g6)
         g3 = QGroupBox(tr("Generale")); f3 = QFormLayout(g3)
         self.recent = QSpinBox(); self.recent.setRange(0, 30); self.recent.setValue(int(s.value("recent_max", 10)))
@@ -1455,7 +1484,7 @@ class PreferencesDialog(QDialog):
     def _defaults(self) -> None:
         self.theme.setCurrentIndex(0); self.menus.setCurrentIndex(0); self.icons.setCurrentIndex(1); self.style.setCurrentIndex(0); self.rows.setCurrentIndex(0); self.locked.setChecked(False)
         self.zoom.setCurrentIndex(0); self.thumbs.setChecked(True); self.fields.setChecked(True); self.recent.setValue(10)
-        self.grid_snap.setChecked(False); self.grid_show.setChecked(False); self.grid_unit.setCurrentIndex(0); self.grid_x.setValue(5.0); self.grid_y.setValue(5.0); self.textsel.setCurrentIndex(0); self.fontpct.setValue(100); self.lang.setCurrentIndex(0); self.scale.setCurrentIndex(0); self.gpu.setCurrentIndex(0); self.cores.setCurrentIndex(0)
+        self.grid_snap.setChecked(False); self.grid_show.setChecked(False); self.grid_unit.setCurrentIndex(0); self.grid_x.setValue(5.0); self.grid_y.setValue(5.0); self.textsel.setCurrentIndex(0); self.fontpct.setValue(100); self.lang.setCurrentIndex(0); self.scale.setCurrentIndex(0); self.gpu.setCurrentIndex(0); self.cores.setCurrentIndex(0); self.ocr_path.clear()
 
     def store(self) -> None:
         s = settings()
@@ -1464,7 +1493,7 @@ class PreferencesDialog(QDialog):
         s.setValue("view/initzoom", self.zoom.currentIndex()); s.setValue("view/thumbs", self.thumbs.isChecked())
         s.setValue("view/fields", self.fields.isChecked()); s.setValue("recent_max", self.recent.value())
         s.setValue("grid/snap", self.grid_snap.isChecked()); s.setValue("grid/show", self.grid_show.isChecked())
-        s.setValue("view/textsel", self.textsel.currentData()); s.setValue("ui/fontpct", self.fontpct.value()); s.setValue("ui/scale", self.scale.currentData()); s.setValue("ui/gpu", self.gpu.currentData()); s.setValue("perf/cores", self.cores.currentData()); s.setValue("ui/lang", self.lang.currentData()); s.setValue("grid/unit", self.grid_unit.currentData()); s.setValue("grid/x", self.grid_x.value()); s.setValue("grid/y", self.grid_y.value())
+        s.setValue("view/textsel", self.textsel.currentData()); s.setValue("ui/fontpct", self.fontpct.value()); s.setValue("ui/scale", self.scale.currentData()); s.setValue("ui/gpu", self.gpu.currentData()); s.setValue("perf/cores", self.cores.currentData()); s.setValue("ocr/path", self.ocr_path.text().strip()); s.setValue("ui/lang", self.lang.currentData()); s.setValue("grid/unit", self.grid_unit.currentData()); s.setValue("grid/x", self.grid_x.value()); s.setValue("grid/y", self.grid_y.value())
 
 
 
@@ -2193,10 +2222,14 @@ class ScanDialog(QDialog):
         if "ita" in langs:
             self.lang.setCurrentIndex(self.lang.findData("ita"))
         self.ocr.setEnabled(bool(langs)); self.lang.setEnabled(bool(langs))
+        self.ocr_dl = QPushButton(tr("Scarica OCR…"))
+        self.ocr_dl.setVisible(False)
+        self.ocr_dl.clicked.connect(self._download_ocr)
         if not langs:
-            self.ocr.setToolTip(tr("Tesseract non trovato: installalo per attivare l'OCR"))
+            self.ocr.setToolTip(tr("Tesseract non trovato: installalo per attivare l'OCR") + "\n" + self._sc.ocr_hint())
             self.ocr.setText(tr("Rendi il testo ricercabile (OCR) — richiede Tesseract, non trovato"))
-        orow2.addWidget(self.ocr); orow2.addWidget(self.lang); orow2.addStretch(1)
+            self.ocr_dl.setVisible(sys.platform == "win32")
+        orow2.addWidget(self.ocr); orow2.addWidget(self.lang); orow2.addWidget(self.ocr_dl); orow2.addStretch(1)
         f.addRow(orow2)
         self.open_after = QCheckBox(tr("Apri il PDF dopo averlo creato")); self.open_after.setChecked(True)
         f.addRow(self.open_after)
@@ -2323,6 +2356,35 @@ class ScanDialog(QDialog):
         p, _ = QFileDialog.getSaveFileName(self, tr("Salva PDF"), self.out.text(), tr("PDF (*.pdf)"))
         if p:
             self.out.setText(p if p.lower().endswith(".pdf") else p + ".pdf")
+
+    def _download_ocr(self) -> None:
+        """Windows: scarica e installa Tesseract (e la lingua italiana) da internet, poi attiva l'OCR."""
+        if QMessageBox.question(self, tr("Scarica OCR"), tr("Verrà scaricato Tesseract {v} da internet (circa 50 MB) e installato per PDFDesk. Continuare?")
+                                .format(v=self._sc.TESSERACT_VERSION)) != QMessageBox.Yes:
+            return
+        prog = QProgressDialog(tr("Scaricamento dell'OCR…"), tr("Annulla"), 0, 100, self)
+        prog.setWindowModality(Qt.WindowModal); prog.setMinimumDuration(0)
+
+        def cb(what, got, total):
+            prog.setLabelText(tr("Scaricamento: {w}").format(w=what)); prog.setValue(int(100 * got / total) if total else 0)
+            QApplication.processEvents()
+            return not prog.wasCanceled()
+        try:
+            self._sc.install_tesseract(progress=cb)
+        except Exception as e:
+            prog.close()
+            QMessageBox.critical(self, tr("Scarica OCR"), tr("Installazione dell'OCR non riuscita:\n{}").format(e))
+            return
+        prog.close()
+        langs = self._sc.ocr_languages()
+        self.lang.clear()
+        for l in langs:
+            self.lang.addItem(l, l)
+        if "ita" in langs:
+            self.lang.setCurrentIndex(self.lang.findData("ita"))
+        self.ocr.setEnabled(bool(langs)); self.lang.setEnabled(bool(langs)); self.ocr.setChecked(bool(langs))
+        self.ocr.setText(tr("Rendi il testo ricercabile (OCR)")); self.ocr.setToolTip("")
+        self.ocr_dl.setVisible(not langs)
 
     def _create(self) -> None:
         if not self.out.text().strip():

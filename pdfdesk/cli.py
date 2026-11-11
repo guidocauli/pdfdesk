@@ -27,6 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--check", metavar="FILE", help="verifica la conformità di un PDF allo standard di --standard (o a quello dichiarato)")
     p.add_argument("--merge", nargs="+", metavar=("OUTPUT", "INPUT"), help="unisce i PDF/immagini INPUT (nell'ordine dato) in OUTPUT")
     p.add_argument("--verify", metavar="FILE", help="verifica le firme digitali di un PDF")
+    p.add_argument("--install-ocr", metavar="CARTELLA", help="Windows: scarica e installa Tesseract (OCR) nella CARTELLA (usato dall'installatore)")
     p.add_argument("--selftest", action="store_true", help="autodiagnosi: prova tutte le funzioni principali ed esce")
     return p
 
@@ -61,6 +62,13 @@ def main(argv=None) -> int:
         return run()
     if args.version:
         print(VERSION_LINE)
+        return 0
+    if args.install_ocr:
+        from . import scan
+        try:
+            print(f"{VERSION_LINE}\n" + scan.install_tesseract(args.install_ocr))
+        except Exception as e:
+            print(f"Errore: {e}", file=sys.stderr); return 1
         return 0
     if args.compress:
         src, dst = args.compress

@@ -1,9 +1,11 @@
 ; PDFDesk — Guido Cauli <guido.cauli@gmail.com>
 ; Installer per Windows (NSIS). Installa, AGGIORNA una versione precedente (stessa cartella, stessi collegamenti) e si disinstalla.
-; Compilazione: makensis -DVERSION=0.7.8 -DEXE=..\..\dist-wine\pdfdesk.exe -DOUTFILE=pdfdesk-0.7.8-windows-x86_64-setup.exe pdfdesk.nsi
+; Compilazione: makensis -DVERSION=0.7.9 -DEXE=..\..\dist-wine\pdfdesk.exe -DOUTFILE=pdfdesk-0.7.9-windows-x86_64-setup.exe pdfdesk.nsi
 ; Opzioni da riga di comando:  /S (silenzioso)   /D=C:\percorso (cartella, ultimo parametro)   /CERT (con /S: installa anche il certificato)
 ; L'eseguibile e questo installer sono firmati con il certificato autofirmato pdfdesk-sign.cer (vedi sign_windows.sh): la sezione
 ; «Certificato» lo aggiunge alle autorità attendibili e agli editori attendibili del computer, così Windows riconosce la firma.
+; Sezione «OCR»: scarica Tesseract da internet (versione e SHA-256 fissati in pdfdesk/scan.py) eseguendo «pdfdesk.exe --install-ocr»;
+; in modalità silenziosa solo con /OCR. Opzioni:  /S  /D=C:\percorso  /CERT  /OCR
 
 Unicode true
 !ifndef VERSION
@@ -85,6 +87,12 @@ LangString SEC_CERT ${LANG_ITALIAN} "Certificato dell'editore (consigliato: Wind
 LangString SEC_CERT ${LANG_ENGLISH} "Publisher certificate (recommended: Windows recognises PDFDesk's signature)"
 LangString DESC_CERT ${LANG_ITALIAN} "Aggiunge il certificato di Guido Cauli alle autorità e agli editori attendibili di questo computer, così Windows non tratta PDFDesk come software di un editore sconosciuto. Fidati solo se hai scaricato questo programma da una fonte che ritieni sicura."
 LangString DESC_CERT ${LANG_ENGLISH} "Adds Guido Cauli's certificate to this computer's trusted root authorities and trusted publishers, so Windows no longer treats PDFDesk as coming from an unknown publisher. Trust it only if you downloaded this program from a source you consider safe."
+LangString SEC_OCR ${LANG_ITALIAN} "OCR: scarica Tesseract da internet (circa 50 MB, per rendere ricercabili le scansioni)"
+LangString SEC_OCR ${LANG_ENGLISH} "OCR: download Tesseract from the internet (about 50 MB, makes scans searchable)"
+LangString DESC_OCR ${LANG_ITALIAN} "Scarica Tesseract (motore OCR) dal sito dell'Università di Mannheim e lo installa nella cartella di PDFDesk, con la lingua italiana. Richiede internet; se il download non riesce, PDFDesk si installa lo stesso e l'OCR si può scaricare più tardi dalla finestra «Crea PDF da scansione»."
+LangString DESC_OCR ${LANG_ENGLISH} "Downloads Tesseract (OCR engine) from the University of Mannheim and installs it in PDFDesk's folder, with Italian language data. Requires internet; if the download fails PDFDesk is still installed and OCR can be downloaded later from the «Create PDF from scan» window."
+LangString MSG_OCR_FAIL ${LANG_ITALIAN} "Download dell'OCR non riuscito (nessuna connessione o file non valido). PDFDesk è stato installato: l'OCR si può scaricare più tardi dalla finestra «Crea PDF da scansione»."
+LangString MSG_OCR_FAIL ${LANG_ENGLISH} "OCR download failed (no connection or invalid file). PDFDesk was installed: OCR can be downloaded later from the «Create PDF from scan» window."
 LangString UNINST_KEEP ${LANG_ITALIAN} "PDFDesk è stato rimosso. Le impostazioni personali e le firme salvate sono state conservate."
 LangString UNINST_KEEP ${LANG_ENGLISH} "PDFDesk has been removed. Your personal settings and saved signatures were kept."
 
@@ -161,8 +169,21 @@ Section "$(SEC_CERT)" SecCert
   ${EndIf}
 SectionEnd
 
+Section "$(SEC_OCR)" SecOcr
+  SetRegView 64
+  DetailPrint "Tesseract (OCR)…"
+  ExecWait '"$INSTDIR\pdfdesk.exe" --install-ocr "$INSTDIR\tesseract"' $0
+  ${If} $0 != 0
+    IfSilent +2 0
+      MessageBox MB_ICONEXCLAMATION|MB_OK "$(MSG_OCR_FAIL)"
+  ${Else}
+    WriteRegDWORD HKLM "${APP_KEY}" "OcrInstalled" 1
+  ${EndIf}
+SectionEnd
+
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
   !insertmacro MUI_DESCRIPTION_TEXT ${SecCert} "$(DESC_CERT)"
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecOcr} "$(DESC_OCR)"
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 Function .onInit
@@ -179,6 +200,13 @@ Function .onInit
     IfErrors 0 certdone
       SectionSetFlags ${SecCert} 0
   certdone:
+  IfSilent 0 ocrdone                                          ; come il certificato: in silenzio l'OCR si scarica solo con /OCR
+    ${GetParameters} $R0
+    ClearErrors
+    ${GetOptions} $R0 "/OCR" $R1
+    IfErrors 0 ocrdone
+      SectionSetFlags ${SecOcr} 0
+  ocrdone:
   StrCpy $IsUpdate "0"
   ReadRegStr $PrevVersion HKLM "${APP_KEY}" "Version"
   ${If} $PrevVersion != ""
@@ -203,6 +231,10 @@ Function .onInit
     ${If} $3 != 1
       SectionSetFlags ${SecCert} 0
     ${EndIf}
+    ReadRegDWORD $3 HKLM "${APP_KEY}" "OcrInstalled"             ; aggiornamento: l'OCR si riscarica solo se era stato installato
+    ${If} $3 != 1
+      SectionSetFlags ${SecOcr} 0
+    ${EndIf}
     ReadRegStr $2 HKLM "Software\Classes\PDFDesk.Document" ""
     ${If} $2 == ""
       SectionSetFlags ${SecAssoc} 0
@@ -223,6 +255,11 @@ Section "Uninstall"
     nsExec::ExecToLog '"$SYSDIR\certutil.exe" -delstore TrustedPublisher "PDFDesk - Guido Cauli"'
   ${EndIf}
   Delete "$INSTDIR\pdfdesk-sign.cer"
+  IfFileExists "$INSTDIR\tesseract\*.*" 0 noocr                  ; OCR scaricato: usa il suo disinstallatore (toglie anche la voce in «App e funzionalità»)
+    IfFileExists "$INSTDIR\tesseract\uninstall.exe" 0 +2
+      ExecWait '"$INSTDIR\tesseract\uninstall.exe" /S _?=$INSTDIR\tesseract'
+    RMDir /r "$INSTDIR\tesseract"
+  noocr:
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"
   Delete "$SMPROGRAMS\${APP}.lnk"

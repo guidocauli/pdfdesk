@@ -147,18 +147,19 @@ foreach ($d in $m.DeviceInfos) { if ($d.Type -eq 1) { "{0}|{1}" -f $d.DeviceID, 
 """
 
 _WIA_SCAN = r"""
-param([string]$Dev,[int]$Dpi,[int]$Intent,[int]$Adf,[int]$W,[int]$H,[string]$Out)
+param([string]$DevId,[int]$Dpi,[int]$Intent,[int]$Adf,[int]$W,[int]$H,[string]$Out)
 $ErrorActionPreference='Stop'
 function SetP($o,$id,$v){ try { $o.Properties.Item($id).Value = $v } catch {} }
 $m = New-Object -ComObject WIA.DeviceManager
 $info = $null
-foreach ($d in $m.DeviceInfos) { if ($d.DeviceID -eq $Dev) { $info = $d } }
+foreach ($d in $m.DeviceInfos) { if ($d.DeviceID -eq $DevId) { $info = $d } }
 if ($info -eq $null) { throw 'Scanner non trovato' }
-$dev = $info.Connect()
+$scanner = $info.Connect()            # NB: PowerShell non distingue maiuscole/minuscole: «$dev» sarebbe il parametro [string] -Dev
+if ($scanner -eq $null) { throw 'Impossibile collegarsi allo scanner' }
 $i = 0
 do {
-  if ($Adf -eq 1) { SetP $dev 3088 1 } else { SetP $dev 3088 2 }
-  $item = $dev.Items.Item(1)
+  if ($Adf -eq 1) { SetP $scanner 3088 1 } else { SetP $scanner 3088 2 }
+  $item = $scanner.Items.Item(1)
   SetP $item 6146 $Intent
   SetP $item 6147 $Dpi
   SetP $item 6148 $Dpi
@@ -173,7 +174,7 @@ do {
   $img.SaveFile($f)
   if ($Adf -ne 1) { break }
   # altra pagina nell'alimentatore? (bit 1 di «Document Handling Status» = feeder pronto)
-  $st = 0; try { $st = $dev.Properties.Item(3087).Value } catch {}
+  $st = 0; try { $st = $scanner.Properties.Item(3087).Value } catch {}
   if (($st -band 1) -eq 0) { break }
 } while ($true)
 """
@@ -203,7 +204,7 @@ def wia_scan(dev: str, prm: ScanParams, folder: str) -> list[str]:
     intent = {"color": 1, "gray": 2, "bw": 4}.get(prm.mode, 1)
     out = os.path.join(folder, "wia")
     os.makedirs(out, exist_ok=True)
-    r = _run([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-Dev", dev,
+    r = _run([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-DevId", dev,
               "-Dpi", str(prm.dpi), "-Intent", str(intent), "-Adf", "1" if prm.source == "adf" else "0",
               "-W", str(size[0]), "-H", str(size[1]), "-Out", out], timeout=1800)
     files = sorted(os.path.join(out, x) for x in os.listdir(out) if x.endswith(".png"))
@@ -239,8 +240,147 @@ def scan_pages(sc: Scanner, prm: ScanParams, folder: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------- immagini → PDF
+# OCR: Tesseract non è incluso nel programma. Su Windows l'installatore (componente «OCR») e il pulsante «Scarica OCR» lo scaricano
+# da internet: versione fissata e controllo SHA-256 prima dell'esecuzione. Altrove si installa con il gestore pacchetti.
+TESSERACT_VERSION = "5.3.0.20221214"
+TESSERACT_URL = "https://digi.bib.uni-mannheim.de/tesseract/tesseract-ocr-w64-setup-v5.3.0.20221214.exe"
+TESSERACT_SHA256 = "175a326853f87474132c284072a821dd819c63b707b01879b309f80bd6c0ab1e"
+TESSDATA_URL = "https://github.com/tesseract-ocr/tessdata_fast/raw/main/{lang}.traineddata"
+OCR_DOWNLOAD_LANGS = ("ita",)           # oltre all'inglese, già compreso nell'installer di Tesseract
+OCR_INSTALL_HINT = {"debian": "sudo apt install tesseract-ocr tesseract-ocr-ita", "redhat": "sudo dnf install tesseract tesseract-langpack-ita",
+                    "arch": "sudo pacman -S tesseract tesseract-data-ita", "macos": "brew install tesseract tesseract-lang"}
+
+
+def _tess_exe() -> str:
+    return "tesseract.exe" if sys.platform == "win32" else "tesseract"
+
+
+def ocr_install_dir() -> str:
+    """Cartella in cui il programma installa Tesseract (solo Windows): accanto all'eseguibile se scrivibile, altrimenti nel profilo."""
+    app = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else ""
+    if app and os.access(app, os.W_OK):
+        return os.path.join(app, "tesseract")
+    return os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "PDFDesk", "tesseract")
+
+
+def ocr_search_dirs() -> list[str]:
+    if sys.platform != "win32":
+        return []
+    d = []
+    if getattr(sys, "frozen", False):
+        d.append(os.path.join(os.path.dirname(sys.executable), "tesseract"))
+    if os.environ.get("LOCALAPPDATA"):
+        d.append(os.path.join(os.environ["LOCALAPPDATA"], "PDFDesk", "tesseract"))
+    for v in ("PROGRAMFILES", "PROGRAMW6432"):
+        if os.environ.get(v):
+            d.append(os.path.join(os.environ[v], "Tesseract-OCR"))
+    return d
+
+
+_TESS_OVERRIDE = ""
+
+
+def set_tesseract_path(path: str) -> None:
+    """Percorso scelto dall'utente nelle Preferenze (file eseguibile o cartella che lo contiene); vuoto = ricerca automatica."""
+    global _TESS_OVERRIDE
+    _TESS_OVERRIDE = (path or "").strip()
+
+
+def _resolve_tess(path: str) -> Optional[str]:
+    if path and os.path.isdir(path):
+        path = os.path.join(path, _tess_exe())
+    return path if path and os.path.isfile(path) else None
+
+
+def find_tesseract() -> Optional[str]:
+    """Ricerca automatica: PATH, poi le cartelle note (accanto a PDFDesk, profilo utente, C:\\Program Files\\Tesseract-OCR…).
+    Non occorre aggiungere Tesseract al PATH."""
+    w = shutil.which("tesseract")
+    if w:
+        return w
+    for d in ocr_search_dirs():
+        p = _resolve_tess(d)
+        if p:
+            return p
+    return None
+
+
 def tesseract_path() -> Optional[str]:
-    return shutil.which("tesseract")
+    return _resolve_tess(_TESS_OVERRIDE) or find_tesseract()
+
+
+def _tess_env(tess: str) -> Optional[dict]:
+    td = os.path.join(os.path.dirname(tess), "tessdata")
+    if os.path.isdir(td) and not os.environ.get("TESSDATA_PREFIX"):
+        return {**os.environ, "TESSDATA_PREFIX": td}
+    return None
+
+
+def ocr_hint() -> str:
+    """Come installare Tesseract su questo sistema (testo per l'utente)."""
+    if sys.platform == "win32":
+        return tr("Usa il pulsante «Scarica OCR» (richiede internet)")
+    if sys.platform == "darwin":
+        return OCR_INSTALL_HINT["macos"]
+    return "{}  |  {}  |  {}".format(OCR_INSTALL_HINT["debian"], OCR_INSTALL_HINT["redhat"], OCR_INSTALL_HINT["arch"])
+
+
+def _download(url: str, dest: str, progress: Optional[Callable[[int, int], bool]] = None, sha256: str = "") -> None:
+    """Scarica `url` in `dest`; se `sha256` è dato, il file deve corrispondere, altrimenti viene cancellato e si segnala l'errore."""
+    import hashlib
+    import urllib.request
+    h = hashlib.sha256()
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "PDFDesk"}), timeout=60) as r, open(dest, "wb") as f:
+            total = int(r.headers.get("Content-Length") or 0); got = 0
+            while True:
+                b = r.read(256 * 1024)
+                if not b:
+                    break
+                f.write(b); h.update(b); got += len(b)
+                if progress and progress(got, total) is False:
+                    raise ScanError(tr("Operazione annullata"))
+    except ScanError:
+        _rm(dest); raise
+    except Exception as e:
+        _rm(dest)
+        raise ScanError(tr("Download non riuscito: {e}").format(e=e)) from e
+    if sha256 and h.hexdigest().lower() != sha256.lower():
+        _rm(dest)
+        raise ScanError(tr("Il file scaricato non corrisponde al controllo di integrità (SHA-256): installazione annullata"))
+
+
+def _rm(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def install_tesseract(dest: str = "", langs: tuple = OCR_DOWNLOAD_LANGS,
+                      progress: Optional[Callable[[str, int, int], bool]] = None) -> str:
+    """Windows: scarica e installa Tesseract (e le lingue extra) in `dest`; restituisce il percorso di tesseract.exe."""
+    if sys.platform != "win32":
+        raise ScanError(tr("Installazione automatica disponibile solo su Windows") + ": " + ocr_hint())
+    dest = dest or ocr_install_dir()
+    tmp = tempfile.mkdtemp(prefix="pdfdesk-tess-")
+    try:
+        def cb(what):
+            return (lambda a, b: progress(what, a, b)) if progress else None
+        setup = os.path.join(tmp, "tesseract-setup.exe")
+        _download(TESSERACT_URL, setup, cb("Tesseract"), TESSERACT_SHA256)
+        os.makedirs(dest, exist_ok=True)
+        r = subprocess.run([setup, "/S", "/D=" + dest], timeout=900)       # NSIS: /D deve essere l'ultimo parametro, senza virgolette
+        exe = os.path.join(dest, "tesseract.exe")
+        if r.returncode != 0 or not os.path.isfile(exe):
+            raise ScanError(tr("L'installazione di Tesseract non è riuscita (codice {c})").format(c=r.returncode))
+        td = os.path.join(dest, "tessdata"); os.makedirs(td, exist_ok=True)
+        for lg in langs:
+            if not os.path.isfile(os.path.join(td, lg + ".traineddata")):
+                _download(TESSDATA_URL.format(lang=lg), os.path.join(td, lg + ".traineddata"), cb(lg))
+        return exe
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def images_to_pdf(files: list[str], out_path: str, dpi: int = 300, jpeg_quality: int = 0, ocr_lang: str = "",
@@ -296,7 +436,7 @@ def _ocr_page(doc: fitz.Document, page: fitz.Page, img_path: str, tess: str, lan
     tmp = tempfile.mkdtemp(prefix="pdfdesk-ocr-")
     try:
         base = os.path.join(tmp, "o")
-        r = _run([tess, img_path, base, "-l", lang, "pdf"], timeout=300)
+        r = _run([tess, img_path, base, "-l", lang, "pdf"], timeout=300, env=_tess_env(tess))
         if r.returncode != 0 or not os.path.exists(base + ".pdf"):
             return
         o = fitz.open(base + ".pdf")
@@ -313,7 +453,7 @@ def ocr_languages() -> list[str]:
     if not t:
         return []
     try:
-        r = _run([t, "--list-langs"], timeout=20)
+        r = _run([t, "--list-langs"], timeout=20, env=_tess_env(t))
         return [x.strip() for x in r.stdout.decode().splitlines()[1:] if x.strip() and x.strip() != "osd"]
     except Exception:
         return []

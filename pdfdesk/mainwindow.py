@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (QApplication, QDockWidget, QMenu, QProgressDialog
                                QComboBox)
 
 from . import AUTHOR, CREDITS, VERSION_LINE, __version__, compress, fonts, pdfstd, signing, sigstore
-from . import parallel
+from . import parallel, scan
 from .core import (release_memory, PasswordRequired, PdfDocument, PdfError, T_FREETEXT, T_STAMP, T_NOTE, T_SQUARE, T_CIRCLE, T_INK, T_LINE,
                    T_HIGHLIGHT, T_UNDERLINE, T_STRIKE, T_REDACT, to_page_rect)
 from .inmenu import InMenuBar, wayland_session
@@ -87,6 +87,7 @@ class MainWindow(QMainWindow):
         self._thumb_timer.setInterval(15)
         self._thumb_timer.timeout.connect(self._thumb_step)
         parallel.set_cores(int(settings().value("perf/cores", 0)))
+        scan.set_tesseract_path(str(settings().value("ocr/path", "")))
         self._mem_timer = QTimer(self)                     # ogni 2 minuti alleggerisce la cache del motore PDF (rinasce da sola)
         self._mem_timer.setInterval(120_000)
         self._mem_timer.timeout.connect(lambda: release_memory(50))
@@ -620,8 +621,11 @@ class MainWindow(QMainWindow):
         old_scale = int(settings().value("ui/scale", 0))
         old_gpu = str(settings().value("ui/gpu", "software"))
         dlg = PreferencesDialog(self)
-        if dlg.exec():
+        accepted = dlg.exec()
+        if accepted:
             dlg.store()
+        scan.set_tesseract_path(str(settings().value("ocr/path", "")))     # annullando si ripristina il percorso provato nella finestra
+        if accepted:
             parallel.set_cores(int(settings().value("perf/cores", 0)))
             if int(settings().value("ui/scale", 0)) != old_scale or str(settings().value("ui/gpu", "software")) != old_gpu:
                 QMessageBox.information(self, tr("Aspetto"), tr("Le nuove impostazioni di scala e disegno saranno applicate al prossimo avvio di PDFDesk."))
