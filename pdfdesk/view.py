@@ -747,7 +747,7 @@ class DocView(QGraphicsView):
                 c = self._sel.rect.center()
                 import math
                 self._drag = {"kind": "rotate", "page": self.sel_page, "center": c,
-                              "a0": math.degrees(math.atan2(sp.y() - c.y(), sp.x() - c.x())), "angle": 0.0}
+                              "a0": math.degrees(math.atan2(sp.y() - c.y(), sp.x() - c.x())), "angle": 0.0, "start": sp}
                 self._make_ghost()
                 return
             self.set_rotate_mode(False)
@@ -955,7 +955,7 @@ class DocView(QGraphicsView):
                 c = self._sel.rect.center()
                 import math
                 self._drag = {"kind": "rotate", "page": self.sel_page, "center": c,
-                              "a0": math.degrees(math.atan2(sp.y() - c.y(), sp.x() - c.x())), "angle": 0.0}
+                              "a0": math.degrees(math.atan2(sp.y() - c.y(), sp.x() - c.x())), "angle": 0.0, "start": sp}
                 self._make_ghost()
                 return
             self.set_rotate_mode(False)
@@ -1147,6 +1147,8 @@ class DocView(QGraphicsView):
             self._sel.update()
             if abs(a) >= 0.5:
                 self.imageRotateRequested.emit(pno, float(a))
+            elif d.get("start") is not None and self._sel.rect.contains(d["start"]):
+                self.set_rotate_mode(False)             # clic sull'immagine senza trascinare: si torna alla selezione (alternanza)
             return
         if k == "mmove":
             dd = d.get("delta")
@@ -1186,7 +1188,40 @@ class DocView(QGraphicsView):
                 if k == "move" and d.get("again") and not d.get("moved") and self._sel_is_image():
                     self.set_rotate_mode(not self._sel.rotate_mode)      # clic su un'immagine già selezionata: modalità rotazione
 
+    def _toggle_rotate_on_image(self, pno: int, annot: Optional[int] = None, obj: Optional[dict] = None) -> bool:
+        """Secondo clic di un doppio clic su un'immagine: la seleziona (se non lo è già) e alterna selezione e rotazione,
+        come un clic normale (Qt non consegna il secondo clic come pressione del mouse)."""
+        if annot is not None:
+            if not (self.sel_page == pno and self.sel_xref == annot and not self.multi):
+                self.select(pno, annot)
+        elif obj is not None:
+            same = (self.sel_content is not None and self.sel_page == pno
+                    and fitz.Rect(self.sel_content["rect"]) == fitz.Rect(obj["rect"]))
+            if not same:
+                self.clear_selection()
+                self.select_content(pno, obj)
+        if not self._sel_is_image():
+            return False
+        self.set_rotate_mode(not self._sel.rotate_mode)
+        return True
+
     def mouseDoubleClickEvent(self, e) -> None:
+        if self.tool in ("select", "editobj") and self.doc and e.button() == Qt.LeftButton:
+            sp = self.mapToScene(e.position().toPoint())
+            pno = self._page_at(sp, nearest=False)
+            if pno >= 0:
+                l = self._local(pno, sp, clamp=False)
+                x = self.doc.annot_at(pno, (l.x(), l.y()))
+                info = self.doc.annot_info(pno, x) if x is not None else None
+                obj = None if x is not None else self.doc.content_at(pno, (l.x(), l.y()))
+                if (info is not None and info.type == 13) or (obj is not None and obj["kind"] == "image"):
+                    self._toggle_rotate_on_image(pno, annot=x if info is not None else None, obj=obj)
+                    if self.tool == "select":                       # poi si passa allo strumento adatto (la selezione resta)
+                        if info is not None:
+                            self.annotDoubleClicked.emit(pno, x)
+                        else:
+                            self.contentDoubleClicked.emit(pno, obj)
+                    return
         if self.tool == "editobj" and self.doc and e.button() == Qt.LeftButton:
             sp = self.mapToScene(e.position().toPoint())
             pno = self._page_at(sp, nearest=False)

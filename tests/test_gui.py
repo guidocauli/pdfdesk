@@ -920,6 +920,26 @@ class CommentsStylesDoubleClickTests(unittest.TestCase):
         finally:
             dlg.TextDialog.exec = orig
 
+    def test_double_click_on_image_selects_toggles_rotation_and_switches_tool(self):
+        from pdfdesk import sigstore
+        from PySide6.QtGui import QImage, QColor
+        shown = []
+        self.w.image_properties = lambda *a, **k: shown.append(a)        # il doppio clic non deve più aprire finestre
+        img = QImage(200, 100, QImage.Format_ARGB32); img.fill(QColor(30, 120, 200))
+        x = self.w.pdf.add_image(0, fitz.Rect(100, 300, 300, 400), sigstore.png_bytes(img)); self.w.changed([0]); wait(100)
+        self.w.set_tool("select"); wait(30)
+        v = self.v
+        QTest.mouseDClick(v.viewport(), Qt.LeftButton, Qt.NoModifier, self.vp(200, 350)); wait(100)
+        self.assertEqual(self.w.tool, "editobj")                           # strumento adatto
+        self.assertEqual(v.sel_xref, x)                                    # immagine selezionata
+        self.assertTrue(v._sel.rotate_mode)                                # e subito in rotazione (secondo clic)
+        self.assertFalse(shown)
+        QTest.mouseDClick(v.viewport(), Qt.LeftButton, Qt.NoModifier, self.vp(200, 350)); wait(100)
+        self.assertEqual(self.w.tool, "editobj")
+        self.assertFalse(v._sel.rotate_mode)                               # ogni clic alterna selezione e rotazione
+        QTest.mouseDClick(v.viewport(), Qt.LeftButton, Qt.NoModifier, self.vp(200, 350)); wait(100)
+        self.assertTrue(v._sel.rotate_mode)
+
     def test_text_dialog_style_buttons_and_properties_panel(self):
         d = dialogs.TextDialog(self.w, "t", "x", 12, "tibo", (0, 0, 0), None, style="u")
         self.assertEqual(d.font.code(), "tiro")

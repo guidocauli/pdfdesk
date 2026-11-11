@@ -820,11 +820,13 @@ class MainWindow(QMainWindow):
         ina = win.darker(135) if dark else win.darker(112)
         fg_i = pal.windowText().color()
         self.tabbar.setStyleSheet(
-            f"QTabBar::tab {{ background: {ina.name()}; color: {fg_i.name()}; padding: 5px 12px; margin-right: 1px;"
-            f" border: 1px solid {win.darker(150).name()}; border-bottom: none; }}"
+            f"QTabBar::tab {{ background: {ina.name()}; color: {fg_i.name()}; padding: 6px 10px 6px 16px; margin-right: 4px;"
+            f" border: 1px solid {win.darker(150).name()}; border-bottom: none;"
+            f" border-top-left-radius: 9px; border-top-right-radius: 9px; }}"
             f"QTabBar::tab:selected {{ background: {act.name()}; color: {'#ffffff' if dark else '#000000'}; font-weight: bold;"
             f" border-top: 3px solid {hi}; }}"
-            f"QTabBar::tab:!selected:hover {{ background: {ina.lighter(112).name()}; }}")
+            f"QTabBar::tab:!selected:hover {{ background: {ina.lighter(112).name()}; }}"
+            f"QTabBar::close-button {{ subcontrol-position: right; margin-left: 10px; margin-right: 2px; }}")
 
     def _sync_tabs(self) -> None:
         """Aggiorna titoli e suggerimenti delle schede (asterisco = modifiche non salvate)."""
@@ -2009,13 +2011,14 @@ class MainWindow(QMainWindow):
         if not info:
             return
         tool = self._tool_for_annot(pno, info)
+        rot = self.view._sel.rotate_mode
         if tool != "select" and self.tool == "select":
             self.set_tool(tool)
             self.view.select(pno, xref)               # set_tool azzera la selezione: l'oggetto resta selezionato e le sue proprietà visibili
+            if rot:
+                self.view.set_rotate_mode(True)       # un'immagine resta in modalità rotazione dopo il cambio di strumento
         if info.type == T_NOTE:
             self.edit_comment(pno, xref)
-        elif info.type == T_STAMP:
-            self.image_properties(pno, {"kind": "annot", "xref": xref})
         elif info.type == T_FREETEXT:
             self.edit_text_annot(pno, xref)
 
@@ -2062,10 +2065,11 @@ class MainWindow(QMainWindow):
             if obj["kind"] == "text":
                 self.set_tool("edittext")
             else:
+                rot = self.view._sel.rotate_mode
                 self.set_tool("editobj")
                 self.view.select_content(pno, obj)
-                if obj["kind"] == "image":
-                    self.image_properties(pno, {"kind": "content", "obj": obj})
+                if rot and obj["kind"] == "image":
+                    self.view.set_rotate_mode(True)
                 return
         self.edit_text_block(pno, obj)
 
