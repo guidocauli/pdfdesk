@@ -29,7 +29,7 @@ jobs:
       - name: Ghostscript (Windows)
         if: runner.os == 'Windows'
         run: choco install ghostscript -y --no-progress
-      - run: python -m pip install -r requirements.txt
+      - run: python -m pip install --only-binary=:all: -r requirements.txt
       - name: Test
         shell: bash
         env: { QT_QPA_PLATFORM: offscreen }
