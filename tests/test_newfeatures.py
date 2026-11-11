@@ -10,6 +10,7 @@ import pymupdf as fitz
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 from make_samples import make_text_pdf
+from pdfdesk import shutdown as _shutdown; _shutdown.install_atexit()      # chiusura ordinata delle finestre lasciate aperte dai test
 from pdfdesk import compress, dialogs, extract, signing
 from pdfdesk.core import PdfDocument
 from pdfdesk.mainwindow import MainWindow
@@ -878,6 +879,43 @@ class OcrDownloadTests(unittest.TestCase):
                 self.scan.install_tesseract(os.path.join(self.tmp, "dest"))
             run.assert_not_called()
 
+    def test_installer_command_line_has_unquoted_d(self):
+        """NSIS vuole «/D=percorso» ultimo e senza virgolette, anche con spazi: la riga va passata come testo, non come lista."""
+        import unittest.mock as m
+        dest = os.path.join(self.tmp, "Program Files", "PDFDesk", "tesseract")
+        src = os.path.join(self.tmp, "setup.exe"); open(src, "wb").write(b"MZ")
+        import hashlib
+        seen = {}
+
+        def fake_run(cmd, **kw):
+            seen["cmd"] = cmd; return m.Mock(returncode=0)
+        with m.patch.object(self.scan.sys, "platform", "win32"), m.patch.object(self.scan, "TESSERACT_URL", "file://" + src), \
+                m.patch.object(self.scan, "TESSERACT_SHA256", hashlib.sha256(b"MZ").hexdigest()), m.patch.object(self.scan.subprocess, "run", fake_run):
+            with self.assertRaises(self.scan.ScanError):          # nessun tesseract.exe viene creato dal finto installer
+                self.scan.install_tesseract(dest, langs=())
+        self.assertIsInstance(seen["cmd"], str)
+        self.assertTrue(seen["cmd"].endswith(" /S /D=" + dest), seen["cmd"])
+        self.assertNotIn('"/D=', seen["cmd"]); self.assertNotIn('/D="', seen["cmd"])
+
+    def test_installer_elevation_fallback_on_740(self):
+        import unittest.mock as m
+        err = OSError(); err.winerror = 740
+        with m.patch.object(self.scan.subprocess, "run", side_effect=err), m.patch.object(self.scan, "_shell_execute_wait", return_value=0) as sh:
+            self.assertEqual(self.scan._run_setup("C:\\x\\setup.exe", "/S /D=C:\\a b"), 0)
+            sh.assert_called_once_with("C:\\x\\setup.exe", "/S /D=C:\\a b", "runas")
+        other = OSError(); other.winerror = 5
+        with m.patch.object(self.scan.subprocess, "run", side_effect=other), self.assertRaises(OSError):
+            self.scan._run_setup("x", "y")
+
+    def test_lock_markers_and_workflow(self):
+        """Il lock vale per tutti i sistemi (marker win32/darwin) e il workflow compila Windows, Linux e macOS con Python 3.11."""
+        root = os.path.join(os.path.dirname(__file__), "..")
+        lock = open(os.path.join(root, "requirements.lock"), encoding="utf-8").read()
+        self.assertIn('macholib==', lock); self.assertIn('sys_platform == "darwin"', lock)
+        wf = open(os.path.join(root, ".github", "workflows", "build.yml"), encoding="utf-8").read()
+        for needle in ("macos-arm64", "macos-intel", 'python-version: "3.11"', "check_build_env.py", "sblocca.sh", "requirements.lock"):
+            self.assertIn(needle, wf)
+
     def test_installer_and_cli_hooks(self):
         nsi = open(os.path.join(os.path.dirname(__file__), "..", "packaging", "windows", "pdfdesk.nsi"), encoding="utf-8").read()
         for needle in ('Section "$(SEC_OCR)" SecOcr', "--install-ocr", '"/OCR"', "OcrInstalled"):
@@ -896,11 +934,53 @@ class OcrDownloadTests(unittest.TestCase):
         self.assertEqual(set(params) & set(assigned), set())
         self.assertIn("-DevId", open(self.scan.__file__, encoding="utf-8").read())
 
+    def test_preferences_side_list_pages(self):
+        """Preferenze: elenco laterale + pagine; ogni opzione sta in una pagina e l'ultima sezione viene ricordata."""
+        d = dialogs.PreferencesDialog(None)
+        self.assertEqual(d.nav.count(), d.stack.count()); self.assertGreaterEqual(d.nav.count(), 5)
+        for w in (d.theme, d.icons, d.zoom, d.grid_x, d.textsel, d.lang, d.scale, d.gpu, d.cores, d.ocr_path, d.recent):
+            self.assertIsNotNone(w.parentWidget())
+        d.nav.setCurrentRow(3); self.assertIs(d.stack.currentWidget(), d.stack.widget(3)); d.store()
+        d2 = dialogs.PreferencesDialog(None); self.assertEqual(d2.nav.currentRow(), 3)
+        d2.nav.setCurrentRow(0); d2.store(); d.close(); d2.close()
+
     def test_preferences_has_ocr_path(self):
         d = dialogs.PreferencesDialog(None); self.assertTrue(hasattr(d, "ocr_path")); d.ocr_path.setText(self.tmp); d.store()
         from pdfdesk.mainwindow import settings
         self.assertEqual(str(settings().value("ocr/path", "")), self.tmp)
         d.ocr_path.clear(); d.store(); d.close()
+
+
+class ExitCleanTests(unittest.TestCase):
+    """Regressione: finestre con funzioni collegate ai segnali che citano «self» restavano vive fino alla fine del programma e
+    venivano distrutte da PySide fuori ordine (crash «malloc(): unaligned tcache chunk» / segmentation fault all'uscita)."""
+
+    SCRIPT = (
+        "import sys, tempfile\n"
+        "sys.path.insert(0, {root!r})\n"
+        "from PySide6.QtCore import QSettings\n"
+        "from PySide6.QtWidgets import QApplication\n"
+        "d = tempfile.mkdtemp(); QSettings.setDefaultFormat(QSettings.IniFormat); QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, d)\n"
+        "app = QApplication([])\n"
+        "from pdfdesk import shutdown, dialogs as D\n"
+        "shutdown.install_atexit()\n"
+        "def t():\n"
+        "    D.TextDialog(None, 't'); D.DrawSignatureDialog(); D.MergeDialog(); D.PreferencesDialog(); D.ScanDialog()\n"
+        "t()\n")
+
+    def test_exit_is_clean(self):
+        import subprocess
+        root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        env = dict(os.environ, QT_QPA_PLATFORM="offscreen")
+        for _ in range(4):
+            r = subprocess.run([sys.executable, "-I", "-c", self.SCRIPT.format(root=root)], env=env, capture_output=True, timeout=120)
+            self.assertEqual(r.returncode, 0, r.stderr.decode("utf-8", "replace")[-400:])
+
+    def test_close_all_widgets_deletes_toplevels(self):
+        import shiboken6
+        d = dialogs.AboutDialog(None); d.show(); app.processEvents()
+        _shutdown.close_all_widgets()
+        self.assertFalse(shiboken6.isValid(d))
 
 
 if __name__ == "__main__":

@@ -25,8 +25,9 @@ def read_lock():
         if not line or line.startswith("#"):
             continue
         spec, _, marker = line.partition(";")
-        if marker.strip() and "win32" in marker and sys.platform != "win32":
-            continue                                   # pacchetti solo Windows
+        mk = marker.strip()
+        if mk and (("win32" in mk and sys.platform != "win32") or ("darwin" in mk and sys.platform != "darwin")):
+            continue                                   # pacchetti solo Windows (pefile…) o solo macOS (macholib)
         name, _, ver = spec.strip().partition("==")
         pins[norm(name)] = ver.strip()
     return py, pins

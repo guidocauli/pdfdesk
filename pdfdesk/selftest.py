@@ -190,7 +190,7 @@ def run() -> int:
     def modules():
         import importlib.util
         names = ("compress", "core", "export", "export_fixed", "extract", "fonts", "imgutil", "merge", "parallel", "paths", "pdfstd",
-                 "scan", "signing", "sigstore", "textbox", "updater", "selftest", "cli", "view", "dialogs", "mainwindow", "icons", "theme", "printing", "inmenu", "i18n", "i18n_en")
+                 "scan", "signing", "sigstore", "textbox", "updater", "selftest", "cli", "shutdown", "view", "dialogs", "mainwindow", "icons", "theme", "printing", "inmenu", "i18n", "i18n_en")
         missing = [n for n in names if importlib.util.find_spec("pdfdesk." + n) is None]   # senza importarli (alcuni richiedono Qt)
         assert not missing, "moduli assenti dal pacchetto: " + ", ".join(missing)       # es. scartati dalla compilazione per sintassi non valida
         return f"{len(names)} moduli presenti"

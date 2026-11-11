@@ -10,7 +10,7 @@ from PySide6.QtCore import QEvent, QObject, QPointF, QSettings, QSize, Qt, QThre
 from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (QAbstractItemView, QBoxLayout, QApplication, QCheckBox, QColorDialog, QComboBox, QDialog as _QDialog, QDialogButtonBox,
                                QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QProgressDialog,
-                               QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton,
+                               QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QStackedWidget,
                                QSlider, QSpinBox, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget)
 
 from . import AUTHOR, CREDITS, VERSION_LINE, __version__, compress, pdfstd, signing, sigstore
@@ -1336,7 +1336,23 @@ class PreferencesDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(tr("Preferenze"))
         s = settings()
-        lay = QVBoxLayout(self)
+        self.setMinimumSize(780, 480)
+        outer = QVBoxLayout(self)
+        body = QHBoxLayout()
+        self.nav = QListWidget()                       # elenco laterale delle sezioni (come nelle preferenze di VLC)
+        self.nav.setFixedWidth(190); self.nav.setFrameShape(QFrame.StyledPanel)
+        self.nav.setStyleSheet("QListWidget::item { padding: 7px 10px; }")
+        self.stack = QStackedWidget()
+        body.addWidget(self.nav); body.addWidget(self.stack, 1)
+        outer.addLayout(body, 1)
+
+        def page(title: str) -> QVBoxLayout:
+            w = QWidget(); v = QVBoxLayout(w); v.setContentsMargins(6, 0, 6, 0)
+            sc = QScrollArea(); sc.setWidgetResizable(True); sc.setFrameShape(QFrame.NoFrame); sc.setWidget(w)
+            self.stack.addWidget(sc); self.nav.addItem(title)
+            return v
+        pg_gen = page(tr("Generale")); pg_look = page(tr("Aspetto")); pg_bars = page(tr("Barre degli strumenti"))
+        pg_view = page(tr("Visualizzazione")); pg_perf = page(tr("Prestazioni")); pg_ocr = page(tr("Scansione e OCR"))
         g = QGroupBox(tr("Barre degli strumenti")); f = QFormLayout(g)
         self.icons = QComboBox(); self.icons.addItems([tr("Piccole (18 px)"), tr("Medie (22 px)"), tr("Grandi (32 px)")])
         self.icons.setCurrentIndex(int(s.value("ui/iconsize", 1)))
@@ -1356,9 +1372,11 @@ class PreferencesDialog(QDialog):
         self.menus = QComboBox(); self.menus.addItems([tr("Automatico (integrati)"), tr("Integrati nella finestra"), tr("Standard di Qt")])
         self.menus.setCurrentIndex(int(s.value("ui/inmenus", 0)))
         self.menus.setToolTip(tr("Aspetto dei menu a tendina: «integrati» li disegna dentro la finestra, sempre attaccati alla barra dei menu"))
-        f.addRow(tr("Menu a tendina"), self.menus); f.addRow(tr("Tema"), self.theme); f.addRow(tr("Icone"), self.icons); f.addRow(tr("Pulsanti"), self.style); f.addRow(tr("Disposizione"), self.rows)
+        ga = QGroupBox(tr("Tema e menu")); fa = QFormLayout(ga)
+        fa.addRow(tr("Menu a tendina"), self.menus); fa.addRow(tr("Tema"), self.theme)
+        f.addRow(tr("Icone"), self.icons); f.addRow(tr("Pulsanti"), self.style); f.addRow(tr("Disposizione"), self.rows)
         f.addRow(self.locked)
-        lay.addWidget(g)
+        pg_look.addWidget(ga); pg_bars.addWidget(g)
         g2 = QGroupBox(tr("Visualizzazione")); f2 = QFormLayout(g2)
         self.zoom = QComboBox(); self.zoom.addItems([tr("Adatta alla larghezza"), tr("Adatta alla pagina"), tr("Dimensione reale (100%)"), tr("Mantieni lo zoom attuale")])
         self.zoom.setCurrentIndex(int(s.value("view/initzoom", 0)))
@@ -1368,7 +1386,7 @@ class PreferencesDialog(QDialog):
         self.fields = QCheckBox(tr("Evidenzia i campi dei moduli"))
         self.fields.setChecked(str(s.value("view/fields", "true")).lower() == "true")
         f2.addRow(tr("Ingrandimento iniziale"), self.zoom); f2.addRow(self.thumbs); f2.addRow(self.fields)
-        lay.addWidget(g2)
+        pg_view.addWidget(g2)
         g4 = QGroupBox(tr("Griglia")); f4 = QFormLayout(g4)
         self.grid_snap = QCheckBox(tr("Aggancia gli oggetti agli incroci della griglia quando li sposti o ridimensioni"))
         self.grid_snap.setChecked(str(s.value("grid/snap", "false")).lower() == "true")
@@ -1388,7 +1406,7 @@ class PreferencesDialog(QDialog):
         self.grid_x.setToolTip(tr("Distanza tra le linee verticali")); self.grid_y.setToolTip(tr("Distanza tra le linee orizzontali"))
         row = QHBoxLayout(); row.addWidget(self.grid_x); row.addWidget(QLabel(tr("×"))); row.addWidget(self.grid_y); row.addWidget(self.grid_unit)
         f4.addRow(self.grid_snap); f4.addRow(self.grid_show); f4.addRow(tr("Passo (orizzontale × verticale)"), row)
-        lay.addWidget(g4)
+        pg_view.addWidget(g4)
         g5 = QGroupBox(tr("Selezione del testo")); f5 = QFormLayout(g5)
         self.textsel = QComboBox()
         self.textsel.addItem(tr("A righe (come in un lettore PDF): dal punto iniziale al finale"), "flow")
@@ -1396,7 +1414,7 @@ class PreferencesDialog(QDialog):
         self.textsel.setCurrentIndex(max(0, self.textsel.findData(str(s.value("view/textsel", "flow")))))
         self.textsel.setToolTip(tr("Vale per copia testo, evidenzia, sottolinea e barra. Tenendo premuto Alt durante il trascinamento si usa l'altra modalità."))
         f5.addRow(tr("Modalità"), self.textsel)
-        lay.addWidget(g5)
+        pg_view.addWidget(g5)
         g7 = QGroupBox(tr("Lingua")); f7 = QFormLayout(g7)
         self.lang = QComboBox()
         from .i18n import LANGUAGES, language
@@ -1405,7 +1423,7 @@ class PreferencesDialog(QDialog):
         self.lang.setCurrentIndex(max(0, self.lang.findData(language())))
         self.lang.setToolTip(tr("Lingua dell'interfaccia (si applica al riavvio del programma)"))
         f7.addRow(tr("Lingua dell'interfaccia"), self.lang)
-        lay.addWidget(g7)
+        pg_gen.addWidget(g7)
         g6 = QGroupBox(tr("Dimensioni dell'interfaccia")); f6 = QFormLayout(g6)
         self.fontpct = QSpinBox(); self.fontpct.setRange(70, 200); self.fontpct.setSingleStep(5); self.fontpct.setSuffix(" %")
         self.fontpct.setValue(int(s.value("ui/fontpct", 100)))
@@ -1423,6 +1441,8 @@ class PreferencesDialog(QDialog):
         self.scale.setToolTip(tr("Ingrandisce tutta l'interfaccia (testo, icone, pulsanti) per gli schermi ad alta densità (HiDPI, Retina). "
                                  "«Automatica» usa la scala del sistema operativo. Si applica al riavvio del programma."))
         f6.addRow(tr("Scala dell'interfaccia"), self.scale)
+        pg_look.addWidget(g6)
+        g6 = QGroupBox(tr("Prestazioni")); f6 = QFormLayout(g6)
         self.gpu = QComboBox()
         self.gpu.addItem(tr("Software (predefinito)"), "software")
         self.gpu.addItem(tr("OpenGL (sperimentale)"), "opengl")
@@ -1441,53 +1461,65 @@ class PreferencesDialog(QDialog):
         self.cores.setToolTip(tr("Quanti processori usare, al bisogno, per le operazioni lunghe su documenti con molte pagine (esportazione in immagini o testo, ricerca). "
                                  "Con «Automatico» si usano al massimo tutti i processori meno uno, così il computer resta reattivo."))
         f6.addRow(tr("Processori da usare"), self.cores)
-        from . import scan as _scan
+        pg_perf.addWidget(g6)
+        g6 = QGroupBox(tr("Tesseract (OCR)")); f6 = QFormLayout(g6)
         self.ocr_path = QLineEdit(str(s.value("ocr/path", "")))
         self.ocr_path.setPlaceholderText(tr("Automatico (cerca Tesseract da solo)"))
         self.ocr_path.setToolTip(tr("Percorso di tesseract (file eseguibile o cartella che lo contiene), per l'OCR nelle scansioni. Vuoto = ricerca automatica nel PATH e nelle "
                                     "cartelle usuali (anche C:\\Program Files\\Tesseract-OCR): non serve modificare la variabile PATH."))
         b_browse = QPushButton(tr("Sfoglia…")); b_auto = QPushButton(tr("Cerca"))
         orow = QHBoxLayout(); orow.addWidget(self.ocr_path, 1); orow.addWidget(b_browse); orow.addWidget(b_auto)
-        self.ocr_state = QLabel()
-
-        def ocr_refresh():
-            _scan.set_tesseract_path(self.ocr_path.text())
-            p = _scan.tesseract_path()
-            self.ocr_state.setText(tr("Trovato: {}").format(p) if p else tr("Tesseract non trovato") + " — " + _scan.ocr_hint())
-            self.ocr_state.setWordWrap(True)
-
-        def ocr_browse():
-            f, _ = QFileDialog.getOpenFileName(self, tr("Percorso di Tesseract"), self.ocr_path.text() or os.path.expanduser("~"))
-            if f:
-                self.ocr_path.setText(f)
-
-        def ocr_auto():
-            self.ocr_path.clear(); ocr_refresh()
-            if not _scan.tesseract_path():
-                QMessageBox.information(self, tr("OCR"), tr("Tesseract non trovato") + "\n" + _scan.ocr_hint())
-        b_browse.clicked.connect(ocr_browse); b_auto.clicked.connect(ocr_auto); self.ocr_path.editingFinished.connect(ocr_refresh)
-        self._ocr_prev = _scan._TESS_OVERRIDE
-        ocr_refresh()
+        self.ocr_state = QLabel(); self.ocr_state.setWordWrap(True)
+        # metodi (non funzioni locali): una funzione che cattura «self» e resta collegata a un segnale tiene vivo il dialogo
+        # e ne rende la distruzione, alla chiusura del programma, fuori ordine (crash «malloc(): unaligned tcache chunk»)
+        b_browse.clicked.connect(self._ocr_browse); b_auto.clicked.connect(self._ocr_auto); self.ocr_path.editingFinished.connect(self._ocr_refresh)
+        self._ocr_refresh()
         f6.addRow(tr("Percorso di Tesseract (OCR)"), orow)
         f6.addRow("", self.ocr_state)
-        lay.addWidget(g6)
-        g3 = QGroupBox(tr("Generale")); f3 = QFormLayout(g3)
+        pg_ocr.addWidget(g6)
+        g3 = QGroupBox(tr("File recenti")); f3 = QFormLayout(g3)
         self.recent = QSpinBox(); self.recent.setRange(0, 30); self.recent.setValue(int(s.value("recent_max", 10)))
         self.recent.setToolTip(tr("Quanti file mostrare in File → Apri recenti (0 = nessuno)"))
-        f3.addRow(tr("File recenti"), self.recent)
-        lay.addWidget(g3)
+        f3.addRow(tr("Numero massimo"), self.recent)
+        pg_gen.addWidget(g3)
+        for v in (pg_gen, pg_look, pg_bars, pg_view, pg_perf, pg_ocr):
+            v.addStretch(1)
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel | QDialogButtonBox.RestoreDefaults)
         bb.accepted.connect(self.accept); bb.rejected.connect(self.reject)
         bb.button(QDialogButtonBox.RestoreDefaults).clicked.connect(self._defaults)
-        lay.addWidget(bb)
+        outer.addWidget(bb)
+        self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
+        try:
+            row = int(s.value("ui/prefpage", 0))
+        except (TypeError, ValueError):
+            row = 0
+        self.nav.setCurrentRow(min(max(row, 0), self.nav.count() - 1))      # riapre l'ultima sezione usata
+
+    def _ocr_refresh(self) -> None:
+        from . import scan
+        scan.set_tesseract_path(self.ocr_path.text())
+        p = scan.tesseract_path()
+        self.ocr_state.setText(tr("Trovato: {}").format(p) if p else tr("Tesseract non trovato") + " — " + scan.ocr_hint())
+
+    def _ocr_browse(self) -> None:
+        f, _ = QFileDialog.getOpenFileName(self, tr("Percorso di Tesseract"), self.ocr_path.text() or os.path.expanduser("~"))
+        if f:
+            self.ocr_path.setText(f); self._ocr_refresh()
+
+    def _ocr_auto(self) -> None:
+        from . import scan
+        self.ocr_path.clear(); self._ocr_refresh()
+        if not scan.tesseract_path():
+            QMessageBox.information(self, tr("OCR"), tr("Tesseract non trovato") + "\n" + scan.ocr_hint())
 
     def _defaults(self) -> None:
         self.theme.setCurrentIndex(0); self.menus.setCurrentIndex(0); self.icons.setCurrentIndex(1); self.style.setCurrentIndex(0); self.rows.setCurrentIndex(0); self.locked.setChecked(False)
         self.zoom.setCurrentIndex(0); self.thumbs.setChecked(True); self.fields.setChecked(True); self.recent.setValue(10)
-        self.grid_snap.setChecked(False); self.grid_show.setChecked(False); self.grid_unit.setCurrentIndex(0); self.grid_x.setValue(5.0); self.grid_y.setValue(5.0); self.textsel.setCurrentIndex(0); self.fontpct.setValue(100); self.lang.setCurrentIndex(0); self.scale.setCurrentIndex(0); self.gpu.setCurrentIndex(0); self.cores.setCurrentIndex(0); self.ocr_path.clear()
+        self.grid_snap.setChecked(False); self.grid_show.setChecked(False); self.grid_unit.setCurrentIndex(0); self.grid_x.setValue(5.0); self.grid_y.setValue(5.0); self.textsel.setCurrentIndex(0); self.fontpct.setValue(100); self.lang.setCurrentIndex(0); self.scale.setCurrentIndex(0); self.gpu.setCurrentIndex(0); self.cores.setCurrentIndex(0); self.ocr_path.clear(); self._ocr_refresh()
 
     def store(self) -> None:
         s = settings()
+        s.setValue("ui/prefpage", self.nav.currentRow())
         s.setValue("ui/theme", self.theme.currentIndex()); s.setValue("ui/inmenus", self.menus.currentIndex()); s.setValue("ui/iconsize", self.icons.currentIndex()); s.setValue("ui/btnstyle", self.style.currentIndex())
         s.setValue("ui/rows", self.rows.currentIndex()); s.setValue("ui/locked", self.locked.isChecked())
         s.setValue("view/initzoom", self.zoom.currentIndex()); s.setValue("view/thumbs", self.thumbs.isChecked())

@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import pymupdf as fitz
 from PySide6.QtGui import QImage, QPainter, QColor
 from make_samples import make_text_pdf, make_image_pdf
+from pdfdesk import shutdown as _shutdown; _shutdown.install_atexit()      # chiusura ordinata delle finestre lasciate aperte dai test
 from pdfdesk.core import PdfDocument, T_INK, T_FREETEXT, T_SQUARE, T_CIRCLE, T_LINE, T_STAMP, T_REDACT
 from pdfdesk import compress, signing
 

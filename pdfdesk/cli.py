@@ -155,4 +155,7 @@ def run_gui(path=None) -> int:
     app.setDesktopFileName("pdfdesk")          # collega la finestra al file .desktop (icona e raggruppamento su Wayland e X11)
     w = MainWindow(path)
     w.show()
-    return app.exec()
+    rc = app.exec()
+    from . import shutdown
+    shutdown.close_all_widgets()               # chiusura ordinata (vedi shutdown.py)
+    return rc

@@ -10,6 +10,7 @@ import pymupdf as fitz
 from PIL import Image
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
+from pdfdesk import shutdown as _shutdown; _shutdown.install_atexit()      # chiusura ordinata delle finestre lasciate aperte dai test
 from pdfdesk import merge, scan, dialogs
 from pdfdesk.mainwindow import MainWindow
 

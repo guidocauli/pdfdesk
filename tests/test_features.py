@@ -8,6 +8,7 @@ TMP = tempfile.mkdtemp(prefix="pdfdesk-feat-")
 os.environ["PDFDESK_DATA"] = os.path.join(TMP, "data")
 import pymupdf as fitz
 from make_samples import make_text_pdf
+from pdfdesk import shutdown as _shutdown; _shutdown.install_atexit()      # chiusura ordinata delle finestre lasciate aperte dai test
 from pdfdesk import fonts, signing
 from pdfdesk.core import PdfDocument, PdfError, T_FREETEXT
 

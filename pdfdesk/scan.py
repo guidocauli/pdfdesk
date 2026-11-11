@@ -357,6 +357,47 @@ def _rm(path: str) -> None:
         pass
 
 
+def _run_setup(exe: str, params: str) -> int:
+    """Esegue l'installer NSIS `exe` con la riga di parametri `params` e ne attende la fine; restituisce il codice di uscita.
+
+    Due accorgimenti: (1) la riga di comando si passa come testo, perché NSIS richiede «/D=percorso» come ultimo parametro e SENZA
+    virgolette anche se il percorso contiene spazi (subprocess con una lista le aggiungerebbe); (2) se l'installer chiede i privilegi di
+    amministratore (errore 740) lo si rilancia con «runas», che mostra la richiesta UAC di Windows."""
+    try:
+        return subprocess.run(f'"{exe}" {params}', timeout=900).returncode
+    except OSError as e:
+        if getattr(e, "winerror", None) != 740:
+            raise
+    return _shell_execute_wait(exe, params, "runas")
+
+
+def _shell_execute_wait(exe: str, params: str, verb: str = "runas", timeout_ms: int = 900_000) -> int:
+    import ctypes
+    from ctypes import wintypes
+
+    class SEI(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("fMask", wintypes.ULONG), ("hwnd", wintypes.HWND), ("lpVerb", wintypes.LPCWSTR),
+                    ("lpFile", wintypes.LPCWSTR), ("lpParameters", wintypes.LPCWSTR), ("lpDirectory", wintypes.LPCWSTR),
+                    ("nShow", ctypes.c_int), ("hInstApp", wintypes.HINSTANCE), ("lpIDList", ctypes.c_void_p), ("lpClass", wintypes.LPCWSTR),
+                    ("hkeyClass", wintypes.HKEY), ("dwHotKey", wintypes.DWORD), ("hIcon", wintypes.HANDLE), ("hProcess", wintypes.HANDLE)]
+    k32 = ctypes.windll.kernel32
+    k32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    k32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    k32.CloseHandle.argtypes = [wintypes.HANDLE]
+    ctypes.windll.shell32.ShellExecuteExW.argtypes = [ctypes.POINTER(SEI)]
+    sei = SEI(); sei.cbSize = ctypes.sizeof(SEI); sei.fMask = 0x40 | 0x8000        # NOCLOSEPROCESS | NOASYNC
+    sei.lpVerb = verb; sei.lpFile = exe; sei.lpParameters = params; sei.nShow = 0
+    if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(sei)) or not sei.hProcess:
+        raise ScanError(tr("Operazione annullata"))          # tipicamente: richiesta UAC rifiutata
+    try:
+        k32.WaitForSingleObject(sei.hProcess, timeout_ms)
+        code = wintypes.DWORD(1)
+        k32.GetExitCodeProcess(sei.hProcess, ctypes.byref(code))
+        return int(code.value)
+    finally:
+        k32.CloseHandle(sei.hProcess)
+
+
 def install_tesseract(dest: str = "", langs: tuple = OCR_DOWNLOAD_LANGS,
                       progress: Optional[Callable[[str, int, int], bool]] = None) -> str:
     """Windows: scarica e installa Tesseract (e le lingue extra) in `dest`; restituisce il percorso di tesseract.exe."""
@@ -370,10 +411,10 @@ def install_tesseract(dest: str = "", langs: tuple = OCR_DOWNLOAD_LANGS,
         setup = os.path.join(tmp, "tesseract-setup.exe")
         _download(TESSERACT_URL, setup, cb("Tesseract"), TESSERACT_SHA256)
         os.makedirs(dest, exist_ok=True)
-        r = subprocess.run([setup, "/S", "/D=" + dest], timeout=900)       # NSIS: /D deve essere l'ultimo parametro, senza virgolette
+        code = _run_setup(setup, "/S /D=" + dest)
         exe = os.path.join(dest, "tesseract.exe")
-        if r.returncode != 0 or not os.path.isfile(exe):
-            raise ScanError(tr("L'installazione di Tesseract non è riuscita (codice {c})").format(c=r.returncode))
+        if code != 0 or not os.path.isfile(exe):
+            raise ScanError(tr("L'installazione di Tesseract non è riuscita (codice {c})").format(c=code))
         td = os.path.join(dest, "tessdata"); os.makedirs(td, exist_ok=True)
         for lg in langs:
             if not os.path.isfile(os.path.join(td, lg + ".traineddata")):
