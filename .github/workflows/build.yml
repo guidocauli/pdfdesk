@@ -53,7 +53,9 @@ jobs:
           elif [ "$RUNNER_OS" = "Windows" ]; then 7z a out/pdfdesk-$VER-${{ matrix.name }}.zip ./dist/pdfdesk.exe LICENSE README.md THIRD_PARTY.md;
           else mkdir -p pkg && cp dist/pdfdesk LICENSE README.md THIRD_PARTY.md pkg/ && tar -C pkg -czf out/pdfdesk-$VER-${{ matrix.name }}.tar.gz .; fi
       - uses: actions/upload-artifact@v4
-        with: { name: pdfdesk-${{ matrix.name }}, path: out/* }
+        with:
+          name: pdfdesk-${{ matrix.name }}
+          path: out/*
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
@@ -62,5 +64,6 @@ jobs:
       - uses: actions/download-artifact@v4
         with: { path: out, merge-multiple: true }
       - name: Pubblica la release
-        env: { GH_TOKEN: "${{ github.token }}" }
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" out/* --repo "$GITHUB_REPOSITORY" --title "PDFDesk ${GITHUB_REF_NAME#v}" --generate-notes
