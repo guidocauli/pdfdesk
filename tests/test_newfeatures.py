@@ -542,3 +542,34 @@ class GroupingMultiTests(unittest.TestCase):
         x = q.content_image_to_stamp(0, o)
         self.assertIsNone(q.content_at(0, (120, 120)))
         self.assertAlmostEqual(q.annot_info(0, x).rect.width, 60, delta=1)
+
+
+class HighlightToggleTests(unittest.TestCase):
+    def _doc(self):
+        from pdfdesk.core import PdfDocument
+        d = fitz.open(); pg = d.new_page(); pg.insert_text((72, 100), "alfa beta gamma delta", fontsize=14)
+        path = os.path.join(TMP, "hlt.pdf"); d.save(path)
+        return PdfDocument.open(path)
+
+    def _hl(self, doc):
+        return [(a.colors["stroke"], len(a.vertices) // 4) for a in doc.doc[0].annots() if a.type[0] == fitz.PDF_ANNOT_HIGHLIGHT]
+
+    def test_same_colour_toggles_off_and_other_colour_replaces(self):
+        d = self._doc(); full = fitz.Rect(60, 80, 300, 110)
+        d.add_markup(0, "hl", full, (1, 1, 0))
+        self.assertEqual(self._hl(d), [([1.0, 1.0, 0.0], 4)])
+        d.add_markup(0, "hl", full, (1, 1, 0))                         # stesso colore: toggle
+        self.assertEqual(self._hl(d), [])
+        d.undo(); self.assertEqual(len(self._hl(d)), 1)                  # annullabile
+        d.add_markup(0, "hl", full, (0, 1, 0))                         # altro colore: sostituisce
+        self.assertEqual(self._hl(d), [([0.0, 1.0, 0.0], 4)])
+
+    def test_partial_overlap_keeps_rest(self):
+        d = self._doc()
+        d.add_markup(0, "hl", fitz.Rect(60, 80, 300, 110), (1, 1, 0))
+        words = d.doc[0].get_text("words"); b = fitz.Rect(words[1][:4])
+        d.add_markup(0, "hl", b + (-1, -1, 1, 1), (1, 1, 0))             # togli solo la seconda parola
+        self.assertEqual(self._hl(d), [([1.0, 1.0, 0.0], 3)])
+        d.add_markup(0, "hl", b + (-1, -1, 1, 1), (1, 0, 0))             # la riprende con un altro colore
+        cols = sorted(c[0] for c in self._hl(d))
+        self.assertEqual(cols, [[1.0, 0.0, 0.0], [1.0, 1.0, 0.0]])

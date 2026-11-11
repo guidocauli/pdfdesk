@@ -185,9 +185,8 @@ class MenuManager(QObject):
         pan = MenuPanel(self, menu, 0)
         self.panels = [pan]
         self._place(pan, anchor.mapTo(self.window, rect.bottomLeft()))
-        bar = self.window.menuBar()
-        if hasattr(key, "menu"):
-            bar.setActiveAction(key)
+        # NB: niente QMenuBar.setActiveAction(): in Qt apre anche la tendina nativa, che si prende il clic (era la causa del
+        # «clic prolungato»); la voce attiva si evidenzia con la sola tendina interna.
 
     def open_child(self, parent: MenuPanel, row: _Row) -> None:
         self.close_deeper(parent.level)

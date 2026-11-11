@@ -458,6 +458,20 @@ class InWindowMenuTests(unittest.TestCase):
         self.assertEqual(self.w.menus.panels, [])
 
 
+class ModalPlacementTests(unittest.TestCase):
+    def test_parentless_dialog_is_attached_and_centered_on_main(self):
+        from PySide6.QtWidgets import QMessageBox
+        QSettings().clear()
+        w = MainWindow(); w.resize(900, 600); w.show(); wait(100)
+        box = QMessageBox(); box.setText("prova"); box.show(); wait(100)
+        try:
+            self.assertIsNotNone(box.windowHandle().transientParent())
+            self.assertIs(box.windowHandle().screen(), w.windowHandle().screen())
+            self.assertLess(abs(box.frameGeometry().center().x() - w.frameGeometry().center().x()), 3)
+        finally:
+            box.close(); w.close(); wait(30)
+
+
 class UndoRedrawTests(unittest.TestCase):
     def test_undo_reports_only_changed_pages(self):
         from pdfdesk.core import PdfDocument

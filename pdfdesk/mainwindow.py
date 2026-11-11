@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QApplication, QDockWidget, QMenu, QProgressDialog
 from . import AUTHOR, CREDITS, VERSION_LINE, compress, fonts, pdfstd, signing, sigstore
 from .core import PasswordRequired, PdfDocument, PdfError, T_FREETEXT, T_STAMP, to_page_rect
 from .inmenu import InMenuBar, wayland_session
-from .dialogs import (AboutDialog, ImageDialog, MergeDialog, ScanDialog, ExportDialog, ExtractImagesDialog, ImageOutDialog, MetadataDialog, FieldTextDialog, StandardDialog, PropertiesPanel, SaveDialog, SignatureLibraryDialog, SignDialog, TextDialog,
+from .dialogs import (ModalPlacer, AboutDialog, ImageDialog, MergeDialog, ScanDialog, ExportDialog, ExtractImagesDialog, ImageOutDialog, MetadataDialog, FieldTextDialog, StandardDialog, PropertiesPanel, SaveDialog, SignatureLibraryDialog, SignDialog, TextDialog,
                       ThumbPanel, VerifyDialog, CertDialog, PreferencesDialog, settings)
 from .icons import app_icon, icon
 from .view import DocView, grid_from_settings, pix_to_qimage
@@ -51,7 +51,7 @@ TOOLS = [  # chiave, etichetta, scorciatoia, suggerimento
     ("eraser", tr("Gomma"), "G", tr("Clicca su un'annotazione per eliminarla")),
 ]
 TOOL_STYLE = {"pen": "pen", "highlighter": "highlighter", "rect": "shape", "ellipse": "shape", "line": "shape",
-              "arrow": "shape", "text": "text"}
+              "arrow": "shape", "text": "text", "hl": "hl", "ul": "ul", "st": "st"}
 
 
 class MainWindow(QMainWindow):
@@ -74,6 +74,9 @@ class MainWindow(QMainWindow):
             "highlighter": {"pen": (1.0, 0.9, 0.0), "width": 14.0, "opacity": 0.45},
             "shape": {"pen": (0.8, 0.0, 0.0), "fill": None, "width": 2.0, "opacity": 1.0},
             "text": {"pen": (0.0, 0.0, 0.0), "fill": None, "width": 0.0, "opacity": 1.0, "fontsize": 12.0, "fontname": "helv"},
+            "hl": {"pen": (1.0, 1.0, 0.0), "width": 1.0, "opacity": 1.0},
+            "ul": {"pen": (0.0, 0.75, 0.0), "width": 1.0, "opacity": 1.0},
+            "st": {"pen": (1.0, 0.0, 0.0), "width": 1.0, "opacity": 1.0},
         }
         self._thumb_queue: list[int] = []
         fonts.start_system_scan()                      # scansione dei font di sistema in background
@@ -103,6 +106,8 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.view, 1)
         lay.addWidget(self._make_findbar())
         self.setCentralWidget(central)
+        self._placer = ModalPlacer(self)
+        QApplication.instance().installEventFilter(self._placer)
 
         self.thumbs = ThumbPanel()
         d = QDockWidget(tr("Miniature"), self)
@@ -513,9 +518,10 @@ class MainWindow(QMainWindow):
         s = settings()
         from . import theme
         theme.apply(QApplication.instance(), int(s.value("ui/theme", 0)))
+        self._style_tabs()
         self._apply_font(int(s.value("ui/fontpct", 100)))
         mode = int(s.value("ui/inmenus", 0))                   # 0 automatico, 1 integrati, 2 standard di Qt
-        self.menus.enabled = wayland_session() if mode == 0 else mode == 1
+        self.menus.enabled = mode in (0, 1)
         self.zoom_btn.setMenu(None if self.menus.enabled else self.menu_zoom)
         px = (18, 22, 32)[max(0, min(2, int(s.value("ui/iconsize", 1))))]
         style = (Qt.ToolButtonIconOnly, Qt.ToolButtonTextBesideIcon, Qt.ToolButtonTextUnderIcon)[max(0, min(2, int(s.value("ui/btnstyle", 0))))]
@@ -741,6 +747,21 @@ class MainWindow(QMainWindow):
     # ---------------------------------------------------------------- schede
     def _doc_label(self, d: PdfDocument) -> str:
         return ("*" if d.modified else "") + (os.path.basename(d.path) if d.path else tr("Senza titolo"))
+
+    def _style_tabs(self) -> None:
+        """La scheda attiva è nettamente più chiara (e in grassetto, con filetto colorato) di quelle inattive."""
+        pal = QApplication.instance().palette()
+        win, hi = pal.window().color(), pal.highlight().color().name()
+        dark = win.lightness() < 128
+        act = win.lighter(185) if dark else QColor(255, 255, 255)
+        ina = win.darker(135) if dark else win.darker(112)
+        fg_i = pal.windowText().color()
+        self.tabbar.setStyleSheet(
+            f"QTabBar::tab {{ background: {ina.name()}; color: {fg_i.name()}; padding: 5px 12px; margin-right: 1px;"
+            f" border: 1px solid {win.darker(150).name()}; border-bottom: none; }}"
+            f"QTabBar::tab:selected {{ background: {act.name()}; color: {'#ffffff' if dark else '#000000'}; font-weight: bold;"
+            f" border-top: 3px solid {hi}; }}"
+            f"QTabBar::tab:!selected:hover {{ background: {ina.lighter(112).name()}; }}")
 
     def _sync_tabs(self) -> None:
         """Aggiorna titoli e suggerimenti delle schede (asterisco = modifiche non salvate)."""
@@ -1282,7 +1303,7 @@ class MainWindow(QMainWindow):
             else:
                 self.msg(tr("Nessun testo nella selezione"))
             return
-        x = self.guard(self.pdf.add_markup_flow, pno, tool, pa, pb)
+        x = self.guard(self.pdf.add_markup_flow, pno, tool, pa, pb, self.style_for(tool)["pen"])
         if x is not None:
             self.changed([pno])
 
@@ -1298,7 +1319,7 @@ class MainWindow(QMainWindow):
             if x is not None:
                 self.msg(tr("Area di redazione segnata. Usa Modifica → Applica redazioni per oscurarla in modo permanente."), 9000)
         elif tool in ("hl", "ul", "st"):
-            x = self.guard(self.pdf.add_markup, pno, tool, fr)
+            x = self.guard(self.pdf.add_markup, pno, tool, fr, self.style_for(tool)["pen"])
         elif tool == "textsel":
             txt = self.pdf.text_in_rect(pno, fr)
             if txt:
@@ -1589,7 +1610,7 @@ class MainWindow(QMainWindow):
             self.view.select(pno, t2["xref"])
 
     def _mark_text(self, pno: int, kind: str, rect) -> None:
-        if self.guard(self.pdf.add_markup, pno, kind, fitz.Rect(rect)) is not None:
+        if self.guard(self.pdf.add_markup, pno, kind, fitz.Rect(rect), self.style_for(kind)["pen"]) is not None:
             self.changed([pno])
 
     def _ctx_text(self, pno: int, p: QPointF) -> None:
@@ -2264,7 +2285,7 @@ class MainWindow(QMainWindow):
         if not self.pdf:
             return
         try:
-            data = self.pdf.current_bytes() if self.pdf.is_signed else self.pdf.doc.tobytes()
+            data = self.pdf.verification_bytes()
             st = signing.verify_pdf_bytes(data)
         except Exception as e:
             QMessageBox.warning(self, tr("Verifica firme"), str(e))

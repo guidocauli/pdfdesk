@@ -537,29 +537,83 @@ class PdfDocument:
             last = key
         return "".join(out)
 
-    def add_markup_flow(self, pno: int, kind: str, a, b) -> int:
+    def add_markup_flow(self, pno: int, kind: str, a, b, color=None) -> int:
         page = self.doc[pno]
         quads = self._flow_quads(page, to_page_pt(page, a), to_page_pt(page, b))
-        return self._add_markup_quads(page, kind, quads)
+        return self._add_markup_quads(page, kind, quads, color)
 
-    def add_markup(self, pno: int, kind: str, rect) -> int:
+    def add_markup(self, pno: int, kind: str, rect, color=None) -> int:
         """Evidenzia/sottolinea/barra il testo contenuto nel rettangolo."""
         page = self.doc[pno]
         r = to_page_rect(page, rect)
-        return self._add_markup_quads(page, kind, self._quads_in_rect(page, r))
+        return self._add_markup_quads(page, kind, self._quads_in_rect(page, r), color)
 
-    def _add_markup_quads(self, page: fitz.Page, kind: str, quads: list) -> int:
+    @staticmethod
+    def _same_color(c1, c2, tol: float = 0.02) -> bool:
+        if not c1 or not c2 or len(c1) != len(c2):
+            return False
+        return all(abs(x - y) <= tol for x, y in zip(c1, c2))
+
+    @staticmethod
+    def _annot_quad_rects(a) -> list:
+        v = a.vertices or []
+        return [fitz.Rect(min(p[0] for p in v[i:i + 4]), min(p[1] for p in v[i:i + 4]),
+                          max(p[0] for p in v[i:i + 4]), max(p[1] for p in v[i:i + 4])) for i in range(0, len(v) - 3, 4)]
+
+    def _add_markup_quads(self, page: fitz.Page, kind: str, quads: list, color=None) -> int:
         if not quads:
             raise PdfError(tr("nessun testo nella selezione"))
         self._begin(tr("marcatura"))
+        color = tuple(color) if color else None
         if kind == "hl":
-            a = page.add_highlight_annot(quads=quads)
-        elif kind == "ul":
+            return self._highlight_quads(page, quads, color or (1.0, 1.0, 0.0))
+        if kind == "ul":
             a = page.add_underline_annot(quads=quads)
         else:
             a = page.add_strikeout_annot(quads=quads)
+        if color:
+            a.set_colors(stroke=color)
         a.update()
         return a.xref
+
+    def _highlight_quads(self, page: fitz.Page, quads: list, color) -> int:
+        """Evidenziazione con inversione: ripassare sul testo già evidenziato dello stesso colore toglie l'evidenziazione;
+        ripassare su testo evidenziato con un altro colore ne sostituisce il colore."""
+        sel = [fitz.Quad(q).rect for q in quads]
+
+        def hit(sr, er) -> bool:
+            i = sr & er
+            return not i.is_empty and i.get_area() >= 0.4 * min(sr.get_area(), er.get_area())
+
+        olds = []                                         # (annot, [rect], colore, opacità, contenuto)
+        for a in list(page.annots(types=[fitz.PDF_ANNOT_HIGHLIGHT]) or []):
+            olds.append((a, self._annot_quad_rects(a), (a.colors or {}).get("stroke"), a.opacity, (a.info or {}).get("content", "")))
+        covered_same = []
+        for sr in sel:
+            covered_same.append(any(hit(sr, er) and self._same_color(c, color) for _, rs, c, _o, _t in olds for er in rs))
+        toggle_off = all(covered_same)
+        changed = []
+        for a, rs, c, op, txt in olds:
+            same = self._same_color(c, color)
+            keep = [er for er in rs if not ((same or not toggle_off) and any(hit(sr, er) for sr in sel))]
+            if len(keep) != len(rs):
+                changed.append((a, keep, c, op, txt))
+        for a, keep, c, op, txt in changed:
+            page.delete_annot(a)
+            if keep:
+                na = page.add_highlight_annot(quads=[er.quad for er in keep])
+                na.set_colors(stroke=c or color)
+                if txt:
+                    na.set_info(content=txt)
+                if op is not None and 0 <= op < 0.999:
+                    na.set_opacity(op)
+                na.update()
+        if toggle_off:
+            return -1
+        na = page.add_highlight_annot(quads=quads)
+        na.set_colors(stroke=color)
+        na.update()
+        return na.xref
 
     @staticmethod
     def _quads_in_rect(page: fitz.Page, r: fitz.Rect):
@@ -1470,6 +1524,7 @@ class PdfDocument:
         except Exception:
             pass
         self._begin(tr("sposta"))
+        gid = self.annot_group_id(a.xref)
         page.delete_annot(a)
         if t == T_INK:
             na = page.add_ink_annot([[m(p) for p in stroke] for stroke in verts])
@@ -1490,6 +1545,8 @@ class PdfDocument:
             except Exception:
                 pass
         na.update()
+        if gid:                                          # il gruppo sopravvive alla ricostruzione dell'annotazione
+            self.doc.xref_set_key(na.xref, "PDFDeskGroup", f"({gid})")
         return na.xref
 
     # ------------------------------------------------------------------ pagine
@@ -1575,6 +1632,16 @@ class PdfDocument:
         if self.is_signed:
             return self._signed_incremental()
         return self.doc.tobytes(garbage=1, deflate=True)
+
+    def verification_bytes(self) -> bytes:
+        """Byte da sottoporre alla Verifica firme: le firme originali restano visibili anche se il documento è stato
+        modificato (current_bytes() le scarterebbe in caso di modifiche permanenti)."""
+        if self.is_signed and self._orig:
+            try:
+                return self._signed_incremental()
+            except Exception:
+                return self._orig
+        return self.doc.tobytes()
 
     def _signed_incremental(self) -> bytes:
         """PDF firmato: i byte originali (con le firme) + una nuova revisione con soltanto gli oggetti cambiati."""

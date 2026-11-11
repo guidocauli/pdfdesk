@@ -6,7 +6,7 @@ import os
 import sys
 from typing import Optional
 
-from PySide6.QtCore import QPointF, QSettings, QSize, Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QPointF, QSettings, QSize, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (QAbstractItemView, QBoxLayout, QApplication, QCheckBox, QColorDialog, QComboBox, QDialog as _QDialog, QDialogButtonBox,
                                QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QProgressDialog,
@@ -28,6 +28,56 @@ class QDialog(_QDialog):
         super().__init__(parent)
         self.setModal(True)
         self.setWindowModality(Qt.ApplicationModal)
+
+
+class ModalPlacer(QObject):
+    """Fa comparire ogni finestra di dialogo (anche QMessageBox, QInputDialog…) sullo stesso schermo della finestra
+    principale, centrata su di essa, e la lega alla principale (transient parent) così che anche sotto Wayland
+    il compositor la collochi nella stessa uscita."""
+
+    def __init__(self, main) -> None:
+        super().__init__(main)
+        self.main = main
+
+    def _owner(self, dlg):
+        p = dlg.parentWidget()
+        while p is not None:
+            if p is self.main:
+                return True
+            p = p.parentWidget()
+        return dlg.parentWidget() is None
+
+    def eventFilter(self, obj, ev) -> bool:
+        if ev.type() == QEvent.Show and isinstance(obj, _QDialog) and obj.isWindow() and obj is not self.main:
+            try:
+                self._place(obj)
+            except Exception:
+                pass
+        return False
+
+    def _place(self, dlg) -> None:
+        mw = self.main
+        if not mw.isVisible() or not self._owner(dlg):
+            return
+        mh, dh = mw.windowHandle(), dlg.windowHandle()
+        if mh is None or dh is None:
+            return
+        if dh.transientParent() is None and dh is not mh:
+            top = QApplication.activeModalWidget()
+            par = top.windowHandle() if top is not None and top is not dlg and top.windowHandle() is not None else mh
+            dh.setTransientParent(par)
+        scr = mh.screen()
+        if scr is not None and dh.screen() is not scr:
+            dh.setScreen(scr)
+        geo = scr.availableGeometry() if scr is not None else None
+        if geo is None:
+            return
+        fr = dlg.frameGeometry()
+        if not geo.intersects(fr) or dlg.parentWidget() is None:
+            c = mw.frameGeometry().center()
+            x = max(geo.left(), min(c.x() - fr.width() // 2, geo.right() - fr.width()))
+            y = max(geo.top(), min(c.y() - fr.height() // 2, geo.bottom() - fr.height()))
+            dlg.move(x, y)
 
 
 def settings() -> QSettings:
@@ -231,7 +281,7 @@ class PropertiesPanel(QWidget):
             self._lock = False
 
     def enable_for(self, tool: str) -> None:
-        pen = tool in ("pen", "highlighter", "rect", "ellipse", "line", "arrow", "text", "select")
+        pen = tool in ("pen", "highlighter", "rect", "ellipse", "line", "arrow", "text", "select", "hl", "ul", "st")
         self.stroke.setEnabled(pen)
         self.width.setEnabled(tool in ("pen", "highlighter", "rect", "ellipse", "line", "arrow", "text", "select"))
         self.opacity.setEnabled(tool in ("pen", "highlighter", "rect", "ellipse", "line", "arrow", "select"))
@@ -1235,7 +1285,7 @@ class PreferencesDialog(QDialog):
         self.theme = QComboBox(); self.theme.addItems([tr("Come il sistema"), tr("Chiaro"), tr("Scuro")])
         self.theme.setCurrentIndex(int(s.value("ui/theme", 0)))
         self.theme.setToolTip(tr("Tema dell'interfaccia: «Come il sistema» segue il tema chiaro/scuro del sistema operativo"))
-        self.menus = QComboBox(); self.menus.addItems([tr("Automatico (integrati su Wayland)"), tr("Integrati nella finestra"), tr("Standard di Qt")])
+        self.menus = QComboBox(); self.menus.addItems([tr("Automatico (integrati)"), tr("Integrati nella finestra"), tr("Standard di Qt")])
         self.menus.setCurrentIndex(int(s.value("ui/inmenus", 0)))
         self.menus.setToolTip(tr("Aspetto dei menu a tendina: «integrati» li disegna dentro la finestra, sempre attaccati alla barra dei menu"))
         f.addRow(tr("Menu a tendina"), self.menus); f.addRow(tr("Tema"), self.theme); f.addRow(tr("Icone"), self.icons); f.addRow(tr("Pulsanti"), self.style); f.addRow(tr("Disposizione"), self.rows)

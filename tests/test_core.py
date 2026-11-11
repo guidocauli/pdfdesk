@@ -206,6 +206,17 @@ class SigningTests(unittest.TestCase):
         self.assertTrue(st[0].intact and st[0].valid); self.assertIn("annotazione", [a.info["content"] for a in (lambda dd: (dd, dd[0]))(fitz.open("pdf", out))[1].annots()][0])
         d.close()
 
+    def test_verification_after_edit_still_lists_signatures(self):
+        sigf = os.path.join(TMP, "firmato3.pdf")
+        open(sigf, "wb").write(signing.sign_pdf_bytes(open(TXT, "rb").read(), signing.SignParams(self.p12, "pw123")))
+        d = PdfDocument.open(sigf)
+        d.add_text(0, fitz.Rect(72, 650, 300, 720), "dopo la firma", 12)
+        self.assertEqual(len(signing.verify_pdf_bytes(d.verification_bytes())), 1)
+        d.add_redact(0, fitz.Rect(72, 72, 200, 100))
+        d.apply_redactions(); self.assertTrue(d.has_permanent_changes)
+        self.assertEqual(len(signing.verify_pdf_bytes(d.verification_bytes())), 1)     # anche dopo una modifica permanente
+        d.close()
+
     def test_drop_signatures(self):
         sigf = os.path.join(TMP, "firmato2.pdf")
         open(sigf, "wb").write(signing.sign_pdf_bytes(open(TXT, "rb").read(), signing.SignParams(self.p12, "pw123")))

@@ -438,7 +438,7 @@ EN = {
     "Come il sistema": "Same as system",
     "Chiaro": "Light",
     "Scuro": "Dark",
-    "Automatico (integrati su Wayland)": "Automatic (integrated on Wayland)",
+    "Automatico (integrati)": "Automatic (integrated)",
     "Integrati nella finestra": "Integrated in the window",
     "Standard di Qt": "Qt standard",
     "Mantieni lo zoom attuale": "Keep current zoom",
