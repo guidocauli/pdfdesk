@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QApplication, QDockWidget, QMenu, QProgressDialog
                                QLineEdit, QMainWindow, QMessageBox, QPushButton, QToolBar, QVBoxLayout, QWidget,
                                QComboBox)
 
-from . import AUTHOR, CREDITS, VERSION_LINE, compress, fonts, pdfstd, signing, sigstore
+from . import AUTHOR, CREDITS, VERSION_LINE, __version__, compress, fonts, pdfstd, signing, sigstore
 from .core import PasswordRequired, PdfDocument, PdfError, T_FREETEXT, T_STAMP, to_page_rect
 from .inmenu import InMenuBar, wayland_session
 from .dialogs import (ModalPlacer, AboutDialog, ImageDialog, MergeDialog, ScanDialog, ExportDialog, ExtractImagesDialog, ImageOutDialog, MetadataDialog, FieldTextDialog, StandardDialog, PropertiesPanel, SaveDialog, SignatureLibraryDialog, SignDialog, TextDialog,
@@ -277,6 +277,7 @@ class MainWindow(QMainWindow):
         self.a_verify = A(tr("&Verifica firme…"), self.verify_signatures)
         self.a_cert = A(tr("Crea certificato autofirmato…"), self.create_cert)
         self.a_about = A(tr("&Informazioni"), lambda: AboutDialog(self).exec())
+        self.a_update = A(tr("Verifica aggiornamenti…"), self.check_updates, "", tr("Controlla se è disponibile una versione più recente"))
         self.a_prefs = A(tr("&Preferenze…"), self.preferences, tr("Ctrl+,"), tr("Opzioni principali del programma"))
         self.a_prevp = A(tr("Pagina precedente"), lambda: self._goto(self.view.current_page() - 1), "", tr("Vai alla pagina precedente"))
         self.a_nextp = A(tr("Pagina successiva"), lambda: self._goto(self.view.current_page() + 1), "", tr("Vai alla pagina successiva"))
@@ -372,8 +373,49 @@ class MainWindow(QMainWindow):
         for a in (self.a_sigdig, self.a_verify, self.a_cert):
             m.addAction(a)
         m = mb.addMenu(tr("&Aiuto"))
+        m.addAction(self.a_update)
         m.addAction(self.a_about)
         self._rebuild_recent()
+
+    def check_updates(self, fetch=None) -> None:
+        """Controlla l'ultima release su GitHub (in un thread, senza bloccare l'interfaccia)."""
+        import threading
+        from PySide6.QtCore import QObject, QUrl, Signal
+        from PySide6.QtGui import QDesktopServices
+        from . import updater
+
+        class _Res(QObject):
+            done = Signal(object, object)
+
+        res = _Res(self)
+        self._upd_res = res
+
+        def show(info, err):
+            if err is not None or not info:
+                QMessageBox.warning(self, tr("Verifica aggiornamenti"), tr("Impossibile contattare GitHub: controlla la connessione e riprova."))
+            elif updater.is_newer(info["version"]):
+                b = QMessageBox(QMessageBox.Information, tr("Verifica aggiornamenti"),
+                                tr("È disponibile la versione {v} (hai la {c}).").format(v=info["version"], c=__version__),
+                                QMessageBox.NoButton, self)
+                if info.get("notes"):
+                    b.setDetailedText(info["notes"])
+                go = b.addButton(tr("Apri la pagina di download"), QMessageBox.AcceptRole)
+                b.addButton(tr("Più tardi"), QMessageBox.RejectRole)
+                b.exec()
+                if b.clickedButton() is go:
+                    QDesktopServices.openUrl(QUrl(info.get("url") or updater.RELEASES_URL))
+            else:
+                QMessageBox.information(self, tr("Verifica aggiornamenti"), tr("PDFDesk è aggiornato (versione {c}).").format(c=__version__))
+
+        res.done.connect(show)
+        fn = fetch or updater.fetch_latest
+
+        def work():
+            try:
+                res.done.emit(fn(), None)
+            except Exception as e:  # rete assente, rate limit, JSON non valido
+                res.done.emit(None, e)
+        threading.Thread(target=work, daemon=True).start()
 
     def _bar(self, title: str, name: str) -> QToolBar:
         tb = QToolBar(title, self)

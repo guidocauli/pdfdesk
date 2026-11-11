@@ -51,7 +51,7 @@ jobs:
           VER=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' pdfdesk/__init__.py)
           if [ "$RUNNER_OS" = "macOS" ]; then (cd dist && ditto -c -k --keepParent PDFDesk.app ../out/pdfdesk-$VER-${{ matrix.name }}.zip);
           elif [ "$RUNNER_OS" = "Windows" ]; then 7z a out/pdfdesk-$VER-${{ matrix.name }}.zip ./dist/pdfdesk.exe LICENSE README.md THIRD_PARTY.md;
-          else mkdir -p pkg && cp dist/pdfdesk LICENSE README.md THIRD_PARTY.md pkg/ && tar -C pkg -czf out/pdfdesk-$VER-${{ matrix.name }}.tar.gz .; fi
+          else mkdir -p pkg/icons && cp dist/pdfdesk LICENSE README.md THIRD_PARTY.md packaging/linux/pdfdesk.desktop packaging/linux/install.sh packaging/linux/uninstall.sh pkg/ && cp packaging/assets/pdfdesk-*.png packaging/assets/pdfdesk.svg pkg/icons/ && tar -C pkg -czf out/pdfdesk-$VER-${{ matrix.name }}.tar.gz .; fi
       - uses: actions/upload-artifact@v4
         with:
           name: pdfdesk-${{ matrix.name }}

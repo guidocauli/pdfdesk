@@ -120,6 +120,7 @@ def run_gui(path=None) -> int:
     app.setOrganizationName("GuidoCauli")
     app.setApplicationVersion(__version__)
     app.setWindowIcon(app_icon())
+    app.setDesktopFileName("pdfdesk")          # collega la finestra al file .desktop (icona e raggruppamento su Wayland e X11)
     w = MainWindow(path)
     w.show()
     return app.exec()

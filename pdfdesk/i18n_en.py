@@ -728,4 +728,12 @@ EN = {
     'Testo, immagini e filetti restano nella stessa posizione del PDF (riquadri di testo). Disattivando si ottiene un testo scorrevole, più comodo da riscrivere ma con impaginazione diversa.': 'Text, images and rules stay where they are in the PDF (text boxes). Turning it off gives flowing text, easier to rewrite but with a different layout.',
     "Ogni blocco di testo diventa un riquadro nella stessa posizione e con gli stessi font del PDF; immagini, filetti e rettangoli sono riposizionati come nell'originale.": 'Each text block becomes a box in the same position and with the same fonts as the PDF; images, rules and rectangles are placed as in the original.',
     'Il testo mantiene colonne, rientri e spaziature della pagina. I PDF scansionati senza testo producono un file vuoto.': "The text keeps the page's columns, indents and spacing. Scanned PDFs without text produce an empty file.",
+    "Verifica aggiornamenti…": "Check for updates…",
+    "Verifica aggiornamenti": "Check for updates",
+    "Controlla se è disponibile una versione più recente": "Check whether a newer version is available",
+    "Impossibile contattare GitHub: controlla la connessione e riprova.": "Could not reach GitHub: check your connection and try again.",
+    "È disponibile la versione {v} (hai la {c}).": "Version {v} is available (you have {c}).",
+    "Apri la pagina di download": "Open the download page",
+    "Più tardi": "Later",
+    "PDFDesk è aggiornato (versione {c}).": "PDFDesk is up to date (version {c}).",
 }

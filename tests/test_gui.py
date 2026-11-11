@@ -745,3 +745,38 @@ class MultiSelectGuiTests(unittest.TestCase):
         self.assertIn("Annulla redazione", texts)
         self.w._toggle_redact(0, fitz.Rect(obj["rect"])); wait(60)
         self.assertIsNone(self.w.pdf.redact_at(0, (330, 320)))
+
+
+class UpdateCheckGuiTests(unittest.TestCase):
+    def setUp(self):
+        self.w = MainWindow(); self.w.resize(1000, 700); self.w.show()
+        from PySide6.QtWidgets import QMessageBox
+        self.seen = []
+        self._orig = (QMessageBox.information, QMessageBox.warning)
+        QMessageBox.information = staticmethod(lambda p, t, m, *a, **k: self.seen.append(("info", m)))
+        QMessageBox.warning = staticmethod(lambda p, t, m, *a, **k: self.seen.append(("warn", m)))
+        self.QMB = QMessageBox
+
+    def tearDown(self):
+        self.QMB.information, self.QMB.warning = self._orig
+        self.w.close()
+
+    def _run(self, fetch):
+        import time
+        self.w.check_updates(fetch)
+        end = time.time() + 5
+        while not self.seen and time.time() < end:
+            QApplication.processEvents(); time.sleep(0.01)
+
+    def test_menu_has_item(self):
+        self.assertIn(self.w.a_update, self.w.menuBar().actions()[-1].menu().actions())
+
+    def test_up_to_date(self):
+        from pdfdesk import __version__
+        self._run(lambda: {"version": __version__, "url": "", "notes": ""})
+        self.assertEqual(self.seen[0][0], "info")
+
+    def test_network_error(self):
+        def boom(): raise OSError("offline")
+        self._run(boom)
+        self.assertEqual(self.seen[0][0], "warn")

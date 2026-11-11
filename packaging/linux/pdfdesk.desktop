@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=PDFDesk
+GenericName=PDF Editor
+GenericName[it]=Editor di PDF
+Comment=Edit, sign, redact and convert PDF files
+Comment[it]=Modifica, firma, oscura e converti file PDF
+Exec=@EXEC@ %F
+TryExec=@EXEC@
+Icon=pdfdesk
+Terminal=false
+Categories=Office;Graphics;Viewer;
+MimeType=application/pdf;
+Keywords=pdf;editor;sign;redact;firma;modifica;
+StartupWMClass=pdfdesk
+StartupNotify=true

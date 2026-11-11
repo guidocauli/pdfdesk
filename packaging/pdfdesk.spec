@@ -1,6 +1,6 @@
 # PDFDesk — Guido Cauli <guido.cauli@gmail.com>
 # Specifica PyInstaller: un solo file eseguibile, senza console (GUI), con i comandi da terminale ancora disponibili.
-import re, sys
+import os, re, sys
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 hidden = collect_submodules("pyhanko") + collect_submodules("pyhanko_certvalidator") + collect_submodules("pkcs11") + ["PIL.Image", "fontTools.subset", "aiohttp", "asn1crypto"]
@@ -102,10 +102,10 @@ if sys.platform == "darwin":
     # su macOS: cartella dentro il bundle .app (più affidabile del file singolo)
     exe = EXE(pyz, a.scripts, [], exclude_binaries=True, argv_emulation=False, **common)
     coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name="pdfdesk")
-    app = BUNDLE(coll, name="PDFDesk.app", bundle_identifier="it.guidocauli.pdfdesk",
+    app = BUNDLE(coll, name="PDFDesk.app", bundle_identifier="it.guidocauli.pdfdesk", icon=os.path.join(SPECPATH, "assets", "pdfdesk.icns"),
                  info_plist={"CFBundleShortVersionString": re.search(r'__version__ = "(.*)"', open("../pdfdesk/__init__.py", encoding="utf-8").read()).group(1), "NSHighResolutionCapable": True,
                              "CFBundleDocumentTypes": [{"CFBundleTypeName": "PDF", "CFBundleTypeExtensions": ["pdf"],
                                                         "CFBundleTypeRole": "Editor"}]})
 else:
     # Windows/Linux: un unico file eseguibile
-    exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], **common)
+    exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], icon=(os.path.join(SPECPATH, "assets", "pdfdesk.ico") if sys.platform == "win32" else None), **common)

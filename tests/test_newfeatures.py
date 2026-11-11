@@ -625,3 +625,34 @@ class ExportLayoutTests(unittest.TestCase):
         export.export(d, "txt", [0], out, keep_layout=False)
         self.assertIn("Colonna destra", open(out, encoding="utf-8").read())
         export.export(d, "docx", [0], os.path.join(TMP, "flow.docx"), keep_layout=False)
+
+
+class UpdaterTests(unittest.TestCase):
+    def test_version_compare(self):
+        from pdfdesk import updater
+        self.assertTrue(updater.is_newer("0.7.4", "0.7.3"))
+        self.assertTrue(updater.is_newer("v0.10.0", "0.9.9"))
+        self.assertTrue(updater.is_newer("1.0", "0.9.9"))
+        self.assertFalse(updater.is_newer("0.7.3", "0.7.3"))
+        self.assertFalse(updater.is_newer("0.7", "0.7.0"))
+        self.assertFalse(updater.is_newer("0.6.9", "0.7.0"))
+        self.assertFalse(updater.is_newer("", "0.7.0"))
+        self.assertFalse(updater.is_newer("abc", "0.7.0"))
+
+    def test_fetch_latest_parses_github_json(self):
+        import json, threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        from pdfdesk import updater
+
+        class H(BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = json.dumps({"tag_name": "v9.9.9", "html_url": "https://example.org/r", "body": "note"}).encode()
+                self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+            def log_message(self, *a): pass
+        srv = HTTPServer(("127.0.0.1", 0), H)
+        t = threading.Thread(target=srv.serve_forever, daemon=True); t.start()
+        try:
+            r = updater.fetch_latest(url=f"http://127.0.0.1:{srv.server_port}/x")
+        finally:
+            srv.shutdown()
+        self.assertEqual(r, {"version": "9.9.9", "url": "https://example.org/r", "notes": "note"})

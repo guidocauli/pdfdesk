@@ -21,7 +21,9 @@ if [ "$OS" = "darwin" ]; then
   (cd dist && ditto -c -k --keepParent PDFDesk.app "pdfdesk-$VER-macos-$ARCH.zip")
 else
   ./dist/pdfdesk --selftest
-  mkdir -p build/pkg && cp dist/pdfdesk LICENSE README.md THIRD_PARTY.md build/pkg/
+  rm -rf build/pkg && mkdir -p build/pkg/icons && cp dist/pdfdesk LICENSE README.md THIRD_PARTY.md build/pkg/
+  cp packaging/linux/pdfdesk.desktop packaging/linux/install.sh packaging/linux/uninstall.sh build/pkg/
+  cp packaging/assets/pdfdesk-*.png packaging/assets/pdfdesk.svg build/pkg/icons/
   tar -C build/pkg -czf "dist/pdfdesk-$VER-linux-$ARCH.tar.gz" .
 fi
 echo "Pacchetto creato in dist/"

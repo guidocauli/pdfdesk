@@ -136,6 +136,26 @@ Da terminale: `pdfdesk --version`, `pdfdesk --compress in.pdf out.pdf --preset m
 - Annulla/ripeti conserva copie dello stato (limite ~400 MB): con PDF molto grandi la cronologia si accorcia.
 - Gli eseguibili non sono firmati dal produttore: Windows SmartScreen e macOS Gatekeeper mostreranno un avviso al primo avvio (macOS: clic destro → Apri).
 
+## Installazione e aggiornamento
+
+**Windows** — esegui `pdfdesk-<versione>-windows-x86_64-setup.exe` (richiede i diritti di amministratore).
+L'installatore copia il programma in `C:\Program Files\PDFDesk`, crea la voce nel menu Start (e, a scelta, il collegamento sul desktop e la voce «Apri con» per i PDF) e si registra in *App e funzionalità*.
+Se è già installata una versione precedente, rileva la cartella esistente e **aggiorna sul posto**; se il programma è aperto chiede di chiuderlo; se la versione installata è uguale o più recente chiede conferma. Le impostazioni e le firme salvate dell'utente non vengono toccate, neppure disinstallando. Installazione silenziosa: `setup.exe /S` (opzionale `/D=C:\percorso`).
+In alternativa lo zip contiene il solo `pdfdesk.exe`, eseguibile senza installazione.
+
+**Linux** — estrai il `tar.gz`, poi:
+
+```
+./install.sh              # per l'utente corrente (~/.local), senza privilegi
+sudo ./install.sh --system   # per tutti gli utenti (/opt/pdfdesk)
+```
+
+Lo script installa l'eseguibile, il file `pdfdesk.desktop` (voce nel menu applicazioni, associazione ai PDF) e le icone in tutte le dimensioni. **Per aggiornare** basta lanciare `install.sh` del pacchetto nuovo: sostituisce la versione precedente (anche se il programma è aperto) e mostra «dalla versione X alla Y». Per rimuoverlo: `~/.local/share/pdfdesk/uninstall.sh` (o `sudo /opt/pdfdesk/uninstall.sh --system`).
+
+**macOS** — apri lo zip e trascina `PDFDesk.app` in *Applicazioni*; per aggiornare sostituisci l'app. Le build macOS non sono firmate né notarizzate: al primo avvio usa clic destro → *Apri*.
+
+**Verifica aggiornamenti** — menu *Aiuto → Verifica aggiornamenti…* confronta la versione in uso con l'ultima release su GitHub (solo su richiesta, nessun dato inviato) e apre la pagina di download.
+
 ## Compilare
 
 ```bash
@@ -148,6 +168,10 @@ Per compilare Windows, Linux e macOS (Intel e Apple Silicon) in un colpo solo c'
 I pacchetti hanno il numero di versione nel nome: `pdfdesk-<versione>-linux-<arch>.tar.gz`, `pdfdesk-<versione>-windows-x86_64.zip`, `pdfdesk-<versione>-macos-<arch>.zip`, `pdfdesk-<versione>-sorgenti.tar.gz` (`./make_sources.sh`). La versione si legge da `pdfdesk/__init__.py`.
 
 Esecuzione da sorgente: `pip install -r requirements.txt && python run_pdfdesk.py [file.pdf]`.
+
+### Installatore Windows
+
+`./build_installer.sh` (richiede `makensis`, pacchetto `nsis`) crea `dist/pdfdesk-<versione>-windows-x86_64-setup.exe` a partire da `dist-wine/pdfdesk.exe` o `dist/pdfdesk.exe`; lo script NSIS è in `packaging/windows/pdfdesk.nsi`. Le icone si rigenerano con `python packaging/make_icons.py` (cartella `packaging/assets/`).
 
 ### Compilare Windows e macOS da questo computer
 PyInstaller non fa cross-compilazione: ogni eseguibile va costruito con le librerie della propria piattaforma. Gli script qui sotto automatizzano i tre percorsi possibili (nessuno di essi è stato provato dall'autore sul proprio ambiente: vedi le note).
