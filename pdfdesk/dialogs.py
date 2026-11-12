@@ -1363,6 +1363,7 @@ class PreferencesDialog(QDialog):
             return v
         pg_gen = page(tr("Generale")); pg_look = page(tr("Aspetto")); pg_bars = page(tr("Barre degli strumenti"))
         pg_view = page(tr("Visualizzazione")); pg_perf = page(tr("Prestazioni")); pg_ocr = page(tr("Scansione e OCR"))
+        pg_tr = page(tr("Traduzione"))
         g = QGroupBox(tr("Barre degli strumenti")); f = QFormLayout(g)
         self.icons = QComboBox(); self.icons.addItems([tr("Piccole (18 px)"), tr("Medie (22 px)"), tr("Grandi (32 px)")])
         self.icons.setCurrentIndex(int(s.value("ui/iconsize", 1)))
@@ -1498,7 +1499,27 @@ class PreferencesDialog(QDialog):
         self.home_start.setToolTip(tr("All'avvio senza file da aprire mostra le attività principali e i documenti recenti"))
         f8.addWidget(self.home_start)
         pg_gen.addWidget(g8)
-        for v in (pg_gen, pg_look, pg_bars, pg_view, pg_perf, pg_ocr):
+        gt = QGroupBox(tr("Motore di traduzione")); ft = QFormLayout(gt)
+        self.tr_engine = QComboBox()
+        for k, n in (("local", tr("Locale (senza internet)")), ("deepl", "DeepL"), ("libretranslate", "LibreTranslate")):
+            self.tr_engine.addItem(n, k)
+        self.tr_engine.setCurrentIndex(max(0, self.tr_engine.findData(str(s.value("translate/engine", "local")))))
+        self.tr_engine.setToolTip(tr("Locale: il testo non lascia il computer. DeepL e LibreTranslate: il testo viene inviato al servizio scelto."))
+        self.tr_deepl = QLineEdit(str(s.value("translate/deepl_key", ""))); self.tr_deepl.setEchoMode(QLineEdit.Password)
+        self.tr_deepl.setPlaceholderText(tr("Chiave API (le chiavi gratuite finiscono con «:fx»)"))
+        self.tr_lt_url = QLineEdit(str(s.value("translate/lt_url", ""))); self.tr_lt_url.setPlaceholderText("https://libretranslate.example.org")
+        self.tr_lt_key = QLineEdit(str(s.value("translate/lt_key", ""))); self.tr_lt_key.setEchoMode(QLineEdit.Password)
+        self.tr_lt_key.setPlaceholderText(tr("Facoltativa"))
+        ft.addRow(tr("Motore"), self.tr_engine); ft.addRow(tr("Chiave DeepL"), self.tr_deepl)
+        ft.addRow(tr("Server LibreTranslate"), self.tr_lt_url); ft.addRow(tr("Chiave LibreTranslate"), self.tr_lt_key)
+        pg_tr.addWidget(gt)
+        gm = QGroupBox(tr("Modelli per la traduzione locale")); fm = QVBoxLayout(gm)
+        self.tr_models = QLabel(); self.tr_models.setWordWrap(True)
+        b_rm = QPushButton(tr("Elimina i modelli scaricati")); b_rm.clicked.connect(self._remove_models)
+        fm.addWidget(self.tr_models); fm.addWidget(b_rm, 0, Qt.AlignLeft)
+        pg_tr.addWidget(gm)
+        self._refresh_models()
+        for v in (pg_gen, pg_look, pg_bars, pg_view, pg_perf, pg_ocr, pg_tr):
             v.addStretch(1)
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel | QDialogButtonBox.RestoreDefaults)
         bb.accepted.connect(self.accept); bb.rejected.connect(self.reject)
@@ -1510,6 +1531,27 @@ class PreferencesDialog(QDialog):
         except (TypeError, ValueError):
             row = 0
         self.nav.setCurrentRow(min(max(row, 0), self.nav.count() - 1))      # riapre l'ultima sezione usata
+
+    def _refresh_models(self) -> None:
+        from . import translate as T
+        try:
+            pairs = sorted(T.installed_pairs())
+        except Exception:
+            pairs = []
+        if pairs:
+            self.tr_models.setText(tr("Installati: {}").format(", ".join(f"{T.lang_name(a)} → {T.lang_name(b)}" for a, b in pairs))
+                                   + "\n" + tr("Cartella: {}").format(T.models_dir()))
+        else:
+            self.tr_models.setText(tr("Nessun modello installato: si scaricano al primo uso (circa 90 MB per lingua)."))
+
+    def _remove_models(self) -> None:
+        from . import translate as T
+        if QMessageBox.question(self, tr("Traduzione"), tr("Eliminare tutti i modelli di traduzione scaricati?")) != QMessageBox.Yes:
+            return
+        T.LocalEngine.unload()
+        for a, b in list(T.installed_pairs()):
+            T.remove_model(a, b)
+        self._refresh_models()
 
     def _ocr_refresh(self) -> None:
         from . import scan
@@ -1530,13 +1572,15 @@ class PreferencesDialog(QDialog):
 
     def _defaults(self) -> None:
         self.theme.setCurrentIndex(0); self.menus.setCurrentIndex(0); self.icons.setCurrentIndex(1); self.style.setCurrentIndex(0); self.rows.setCurrentIndex(0); self.locked.setChecked(False)
-        self.zoom.setCurrentIndex(0); self.thumbs.setChecked(True); self.fields.setChecked(True); self.recent.setValue(10); self.home_start.setChecked(True)
+        self.zoom.setCurrentIndex(0); self.thumbs.setChecked(True); self.fields.setChecked(True); self.recent.setValue(10); self.home_start.setChecked(True); self.tr_engine.setCurrentIndex(0)
         self.grid_snap.setChecked(False); self.grid_show.setChecked(False); self.grid_unit.setCurrentIndex(0); self.grid_x.setValue(5.0); self.grid_y.setValue(5.0); self.textsel.setCurrentIndex(0); self.fontpct.setValue(100); self.lang.setCurrentIndex(0); self.scale.setCurrentIndex(0); self.gpu.setCurrentIndex(0); self.cores.setCurrentIndex(0); self.ocr_path.clear(); self._ocr_refresh()
 
     def store(self) -> None:
         s = settings()
         s.setValue("ui/prefpage", self.nav.currentRow())
         s.setValue("ui/home_start", self.home_start.isChecked())
+        s.setValue("translate/engine", self.tr_engine.currentData()); s.setValue("translate/deepl_key", self.tr_deepl.text().strip())
+        s.setValue("translate/lt_url", self.tr_lt_url.text().strip()); s.setValue("translate/lt_key", self.tr_lt_key.text().strip())
         s.setValue("ui/theme", self.theme.currentIndex()); s.setValue("ui/inmenus", self.menus.currentIndex()); s.setValue("ui/iconsize", self.icons.currentIndex()); s.setValue("ui/btnstyle", self.style.currentIndex())
         s.setValue("ui/rows", self.rows.currentIndex()); s.setValue("ui/locked", self.locked.isChecked())
         s.setValue("view/initzoom", self.zoom.currentIndex()); s.setValue("view/thumbs", self.thumbs.isChecked())

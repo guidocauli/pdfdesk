@@ -26,6 +26,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--icc", metavar="FILE", help="con --standard pdfx-*: profilo ICC di stampa (CMYK)")
     p.add_argument("--check", metavar="FILE", help="verifica la conformità di un PDF allo standard di --standard (o a quello dichiarato)")
     p.add_argument("--merge", nargs="+", metavar=("OUTPUT", "INPUT"), help="unisce i PDF/immagini INPUT (nell'ordine dato) in OUTPUT")
+    p.add_argument("--translate", nargs="+", metavar="FILE", help="traduce i PDF nella lingua di --to (crea NOME_translated_LINGUA.pdf)")
+    p.add_argument("--to", metavar="LINGUA", help="con --translate: lingua di destinazione (codice ISO, es. en, it, de)")
+    p.add_argument("--from", dest="src", metavar="LINGUA", help="con --translate: lingua di partenza (se assente viene rilevata)")
+    p.add_argument("--name", metavar="SCHEMA", help="con --translate: nome dei file tradotti, con {name} e {lang} (predefinito {name}_translated_{lang})")
+    p.add_argument("--outdir", metavar="CARTELLA", help="con --translate: cartella dei file tradotti (predefinita: quella dell'originale)")
+    p.add_argument("--engine", choices=["local", "deepl", "libretranslate"], default="local",
+                   help="con --translate: motore (local senza internet; deepl usa DEEPL_KEY; libretranslate usa LIBRETRANSLATE_URL e LIBRETRANSLATE_KEY)")
     p.add_argument("--verify", metavar="FILE", help="verifica le firme digitali di un PDF")
     p.add_argument("--install-ocr", metavar="CARTELLA", help="Windows: scarica e installa Tesseract (OCR) nella CARTELLA (usato dall'installatore)")
     p.add_argument("--selftest", action="store_true", help="autodiagnosi: prova tutte le funzioni principali ed esce")
@@ -108,6 +115,41 @@ def main(argv=None) -> int:
             return 3
         print(f"{VERSION_LINE}\n{args.merge[0]}: {n} pagine")
         return 0
+    if args.translate:
+        from . import translate as T
+        if not args.to:
+            print(f"{VERSION_LINE}\nERRORE: --translate richiede --to LINGUA", file=sys.stderr)
+            return 3
+        eng = T.make_engine(args.engine, os.environ.get("DEEPL_KEY", ""), os.environ.get("LIBRETRANSLATE_URL", ""),
+                            os.environ.get("LIBRETRANSLATE_KEY", ""))
+        print(VERSION_LINE)
+        rc = 0
+        index = None
+        for f in args.translate:
+            try:
+                with open(f, "rb") as fh:
+                    data = fh.read()
+                src = args.src
+                if not src:
+                    import pymupdf as fitz
+                    with fitz.open("pdf", data) as d:
+                        src = T.detect_pdf_language(d)
+                if not src:
+                    raise T.TranslateError("lingua non rilevata: indicala con --from")
+                if isinstance(eng, T.LocalEngine) and not eng.ready(src, args.to):
+                    index = index or T.fetch_index()
+                    for m in T.models_needed(src, args.to, index):
+                        print(f"scaricamento del modello {m.src} → {m.dst}…", flush=True)
+                        T.install_model(m)
+                out_data, rep = T.translate_document(data, src, args.to, eng)
+                out = T.output_name(f, args.to, args.name or T.DEFAULT_PATTERN, args.outdir or "")
+                from .compress import write_atomic
+                write_atomic(out, out_data)
+                print(f"{f} → {out}\n  " + rep.text().replace("\n", "\n  "))
+            except Exception as e:
+                print(f"{f}: ERRORE: {e}", file=sys.stderr)
+                rc = 3
+        return rc
     if args.verify:
         from . import signing
         sts = signing.verify_pdf_bytes(open(args.verify, "rb").read())

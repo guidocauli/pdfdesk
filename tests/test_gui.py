@@ -1051,7 +1051,8 @@ class HomePageTests(unittest.TestCase):
             self.assertFalse(w.dock_pages.isVisible())
             self.assertEqual(len(w.home.rows), 10)                                  # massimo 10, i file mancanti esclusi
             self.assertEqual([r.path for r in w.home.rows], self.recents[:10])
-            self.assertEqual(set(w.home.cards), {"open", "new", "merge", "scan", "form", "sign", "compress", "standard", "export"})
+            self.assertEqual(set(w.home.cards), {"open", "new", "merge", "scan", "form", "sign", "compress", "standard", "export",
+                                                  "translate", "verify", "redact"})
             self.assertIs(w.bars[0].actions()[0], w.a_home)                         # primo pulsante della barra principale
         finally:
             w.close(); wait(30)
@@ -1099,7 +1100,7 @@ class HomePageTests(unittest.TestCase):
             self.assertNotIn(self.recents[0], settings().value("recent"))
             calls = []
             with m.patch.object(QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: ("", ""))):
-                for k in ("form", "sign", "compress", "standard", "export"):
+                for k in ("form", "sign", "compress", "standard", "export", "verify", "redact"):
                     w.home.cards[k].click()                                     # annullando la scelta non succede nulla
             self.assertIsNone(w.pdf); self.assertTrue(w.home_visible())
             with m.patch.object(QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: (__import__("test_features").FORM, ""))):

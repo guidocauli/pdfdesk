@@ -252,6 +252,9 @@ class MainWindow(QMainWindow):
         self.a_merge = A(tr("&Unisci PDF…"), self.merge_dialog, "", tr("Unisce più PDF (e immagini) in un unico PDF, nell'ordine che scegli"))
         self.a_scan = A(tr("Crea PDF da &scansione…"), self.scan_dialog, "", tr("Acquisisce pagine da uno scanner (WIA, SANE) o da immagini e crea un PDF"))
         self.a_print = A(tr("&Stampa…"), self.print_doc, tr("Ctrl+P"), tr("Stampa il documento (tutte le pagine o un intervallo)"))
+        self.a_translate = A(tr("&Traduci PDF…"), self.translate_dialog, tr("Ctrl+Shift+T"),
+                             tr("Traduce il documento aperto o più PDF in un'altra lingua"))
+        self.a_translate.setIcon(icon("translate"))
         self.a_export = A(tr("&Esporta…"), lambda: self.export_doc(None), tr("Ctrl+Shift+E"),
                           tr("Esporta come immagini (PNG, JPG, TIFF), testo, Word (DOCX) o OpenDocument (ODT)"))
         self.a_closeall = A(tr("Chiudi &tutti"), self.close_all, "", tr("Chiude tutte le schede"))
@@ -353,6 +356,7 @@ class MainWindow(QMainWindow):
         m.addAction(self.a_meta)
         m.addSeparator()
         m.addAction(self.a_print)
+        m.addAction(self.a_translate)
         self.menu_export = m.addMenu(tr("Esporta"))
         self.menu_export.setIcon(icon("export"))
         for a in self.export_actions.values():
@@ -763,6 +767,39 @@ class MainWindow(QMainWindow):
         s.setValue("recent", [p for p in (s.value("recent", []) or []) if p != path])
         self._rebuild_recent()
 
+    def translate_dialog(self, files: Optional[list] = None) -> None:
+        """Traduci PDF: il documento aperto (se c'è) e/o altri PDF. Il documento aperto, tradotto, si apre accanto all'originale."""
+        from .translate_ui import TranslateDialog
+        orig = self.pdf
+        current = None
+        if orig is not None:
+            current = (orig.path, orig.current_bytes, os.path.basename(orig.path) if orig.path else tr("Senza titolo"))
+
+        def done(out, data, rep):
+            self.open_translated(orig, out, data)
+        dlg = TranslateDialog(self, current, files, done)
+        dlg.exec()
+
+    def open_translated(self, orig: Optional[PdfDocument], out: Optional[str], data: bytes) -> None:
+        """Apre il PDF tradotto in una scheda subito dopo l'originale (o al posto di una scheda già aperta sullo stesso file)."""
+        if out:
+            ap = os.path.abspath(out)
+            for i, d in enumerate(list(self.docs)):
+                if d.path and os.path.abspath(d.path) == ap and not d.modified:
+                    self._close_index(i)                       # versione precedente della traduzione: si ricarica
+                    break
+            try:
+                doc = PdfDocument.open(out)
+            except Exception as e:
+                QMessageBox.warning(self, tr("Traduci PDF"), tr("Impossibile aprire il file:\n{}").format(e))
+                return
+            self._add_recent(ap)
+        else:
+            doc = PdfDocument()
+            doc.doc = fitz.open("pdf", data)
+            doc.modified = True                                  # originale mai salvato: anche la traduzione va salvata
+        self._add_tab(doc, after=orig if orig in self.docs else None)
+
     def run_activity(self, key: str) -> None:
         """Attività scelta nella pagina iniziale. Quelle che lavorano su un documento chiedono prima quale PDF aprire."""
         if key == "open":
@@ -773,6 +810,8 @@ class MainWindow(QMainWindow):
             return self.merge_dialog()
         if key == "scan":
             return self.scan_dialog()
+        if key == "translate":
+            return self.translate_dialog()
         start = settings().value("lastdir", "")
         path, _ = QFileDialog.getOpenFileName(self, tr("Scegli il PDF"), start, tr("PDF (*.pdf);;Tutti i file (*)"))
         if not path or not self.open_path(path):
@@ -790,6 +829,10 @@ class MainWindow(QMainWindow):
             self.standard_dialog()
         elif key == "export":
             self.export_doc(None)
+        elif key == "verify":
+            self.verify_signatures()
+        elif key == "redact":
+            self.set_tool("redact")
 
     def _add_recent(self, path: str) -> None:
         s = settings()
@@ -961,12 +1004,14 @@ class MainWindow(QMainWindow):
         if 0 <= i < len(self.docs):
             self._close_index(i)
 
-    def _add_tab(self, doc: PdfDocument) -> None:
+    def _add_tab(self, doc: PdfDocument, after: Optional[PdfDocument] = None) -> None:
+        """Nuova scheda in fondo, oppure subito dopo quella di `after` (es. il documento tradotto accanto all'originale)."""
         self._save_tab_state()
-        self.docs.append(doc)
+        pos = self.docs.index(after) + 1 if after is not None and after in self.docs else len(self.docs)
+        self.docs.insert(pos, doc)
         self._tab_lock = True
         try:
-            i = self.tabbar.addTab(self._doc_label(doc).replace("&", "&&"))
+            i = self.tabbar.insertTab(pos, self._doc_label(doc).replace("&", "&&"))
             self.tabbar.setCurrentIndex(i)
         finally:
             self._tab_lock = False

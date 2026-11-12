@@ -354,6 +354,16 @@ def _home(p, c):
     p.drawRect(QRectF(11, 22, 26, 18)); p.drawRect(QRectF(20, 29, 8, 11))
 
 
+def _translate(p, c):
+    # globo (meridiani e paralleli) con una «A» in basso a destra
+    p.drawEllipse(QRectF(5, 5, 28, 28))
+    p.drawEllipse(QRectF(13, 5, 12, 28))
+    p.drawLine(QPointF(5, 19), QPointF(33, 19))
+    p.drawLine(QPointF(8, 12), QPointF(30, 12)); p.drawLine(QPointF(8, 26), QPointF(30, 26))
+    p.drawPolyline(QPolygonF([QPointF(28, 44), QPointF(35, 26), QPointF(42, 44)]))
+    p.drawLine(QPointF(31, 38), QPointF(39, 38))
+
+
 def _merge(p, c):
     p.drawRect(QRectF(6, 6, 18, 24)); p.drawRect(QRectF(14, 14, 18, 24))
     p.setBrush(c); p.drawPolygon(QPolygonF([QPointF(36, 24), QPointF(28, 18), QPointF(28, 30)]))
@@ -364,7 +374,7 @@ def _scan(p, c):
     p.drawLine(16, 11, 32, 11); p.drawLine(16, 16, 28, 16); p.drawLine(9, 32, 39, 32)
 
 
-_DRAW = {"home": _home, "merge": _merge, "scan": _scan, "select": _select, "hand": _hand, "textsel": _textsel, "pen": _pen, "highlighter": _highlighter, "rect": _rect,
+_DRAW = {"home": _home, "translate": _translate, "merge": _merge, "scan": _scan, "select": _select, "hand": _hand, "textsel": _textsel, "pen": _pen, "highlighter": _highlighter, "rect": _rect,
          "ellipse": _ellipse, "line": _line, "arrow": _arrow, "text": _text, "image": _image, "sign": _sign, "hl": _hl,
          "ul": _ul, "st": _st, "redact": _redact, "applyred": _applyred, "group": _group, "ungroup": _ungroup, "edittext": _edittext, "eraser": _eraser, "comment": _comment, "sigbox": _sign, "app": _app,
          "open": _open, "save": _save, "saveas": _saveas, "new": _new, "undo": _undo, "redo": _redo, "zoom": _mag,

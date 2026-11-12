@@ -1,10 +1,15 @@
 # PDFDesk — Guido Cauli <guido.cauli@gmail.com>
 # Specifica PyInstaller: un solo file eseguibile, senza console (GUI), con i comandi da terminale ancora disponibili.
 import os, re, sys
-from PyInstaller.utils.hooks import collect_submodules, collect_data_files
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files, collect_dynamic_libs
 
 hidden = collect_submodules("pdfdesk") + collect_submodules("pyhanko") + collect_submodules("pyhanko_certvalidator") + collect_submodules("pkcs11") + ["PIL.Image", "fontTools.subset", "aiohttp", "asn1crypto"]
 datas = collect_data_files("pyhanko") + collect_data_files("pyhanko_certvalidator")
+# traduzione: CTranslate2 (librerie native), sentencepiece, langdetect (profili delle lingue). NumPy non serve per tradurre
+# e su Wine non si carica: viene escluso.
+hidden += ["ctranslate2", "sentencepiece", "langdetect"] + collect_submodules("langdetect")
+datas += collect_data_files("langdetect")
+trans_bins = collect_dynamic_libs("ctranslate2")
 excludes = ["tkinter", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.QtQml", "PySide6.QtQuick",
             "PySide6.Qt3DCore", "PySide6.QtMultimedia", "PySide6.QtSql", "PySide6.QtTest", "PySide6.QtNetwork",
             # componenti non usati (modelli di analisi layout, calcolo scientifico, ecc.): pesano decine di MB
@@ -93,7 +98,7 @@ def qt_plugin_fallback():
 
 
 gs_bins = gs_bins + (qt_plugin_fallback() if sys.platform == "win32" else [])
-a = Analysis(["../run_pdfdesk.py"], pathex=[".."], binaries=gs_bins, datas=datas + gs_data, hiddenimports=hidden, excludes=excludes, noarchive=False)
+a = Analysis(["../run_pdfdesk.py"], pathex=[".."], binaries=gs_bins + trans_bins, datas=datas + gs_data, hiddenimports=hidden, excludes=excludes, noarchive=False)
 a.binaries = [b for b in a.binaries if not any(d in b[0].lower() for d in DROP)]
 a.datas = [d for d in a.datas if not any(x in d[0].lower() for x in DROP)]
 pyz = PYZ(a.pure)

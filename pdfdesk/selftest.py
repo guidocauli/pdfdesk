@@ -190,12 +190,33 @@ def run() -> int:
     def modules():
         import importlib.util
         names = ("compress", "core", "export", "export_fixed", "extract", "fonts", "imgutil", "merge", "parallel", "paths", "pdfstd",
-                 "scan", "signing", "sigstore", "textbox", "updater", "selftest", "cli", "shutdown", "home", "view", "dialogs", "mainwindow", "icons", "theme", "printing", "inmenu", "i18n", "i18n_en")
+                 "scan", "signing", "sigstore", "textbox", "updater", "selftest", "cli", "shutdown", "home", "translate", "translate_ui", "view", "dialogs", "mainwindow", "icons", "theme", "printing", "inmenu", "i18n", "i18n_en")
         missing = [n for n in names if importlib.util.find_spec("pdfdesk." + n) is None]   # senza importarli (alcuni richiedono Qt)
         assert not missing, "moduli assenti dal pacchetto: " + ", ".join(missing)       # es. scartati dalla compilazione per sintassi non valida
         return f"{len(names)} moduli presenti"
 
+    def translation():
+        # rilevamento della lingua e riscrittura del PDF con un motore di prova (i modelli veri si scaricano all'uso);
+        # le librerie del motore locale devono essere presenti nel pacchetto
+        from . import translate as T
+        import importlib.util
+        for lib in ("ctranslate2", "sentencepiece", "langdetect"):
+            assert importlib.util.find_spec(lib) is not None, f"libreria {lib} assente"
+        d = fitz.open(); pg = d.new_page()
+        pg.insert_text((72, 72), "Questo è un documento di prova scritto in lingua italiana per la traduzione.", fontsize=11)
+        lang = T.detect_pdf_language(d)
+        assert lang == "it", f"lingua rilevata: {lang}"
+
+        class Up(T.Engine):
+            def translate(self, texts, src, dst, progress=None):
+                return [t.upper() for t in texts]
+        out, rep = T.translate_document(d.tobytes(), None, "en", Up())
+        assert "QUESTO È UN DOCUMENTO" in fitz.open("pdf", out)[0].get_text(), "testo tradotto assente"
+        d.close()
+        return f"lingua rilevata: {lang}, {rep.blocks} caselle riscritte"
+
     step("moduli del programma", modules)
+    step("traduzione", translation)
     step("esportazione TXT/DOCX/ODT", exports)
     step("calcolo parallelo", par)
     step("interfaccia", gui)

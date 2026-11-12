@@ -26,8 +26,11 @@ ACTIVITIES = (
     ("compress", "saveas", "Riduci le dimensioni", "Comprimi immagini e struttura del file"),
     ("standard", "std", "Converti in PDF/A o PDF/X", "Archiviazione a lungo termine o stampa"),
     ("export", "export", "Esporta in Word o immagini", "DOCX, ODT, PNG, JPG, TIFF o testo"),
+    ("translate", "translate", "Traduci un PDF", "In un'altra lingua, anche più file insieme"),
+    ("verify", "verify", "Verifica le firme", "Controlla integrità e validità delle firme"),
+    ("redact", "redact", "Oscura informazioni", "Nascondi in modo permanente testo e immagini"),
 )
-NEEDS_DOC = {"form", "sign", "compress", "standard", "export"}
+NEEDS_DOC = {"form", "sign", "compress", "standard", "export", "verify", "redact"}
 MAX_RECENT = 10
 
 

@@ -9,6 +9,7 @@ Editor PDF grafico per **Windows, Linux e macOS**. Si distribuisce come singolo 
 - [Firme digitali](#firme-digitali)
 - [PDF/A e PDF/X](#pdfa-e-pdfx)
 - [Scansione e OCR](#scansione-e-ocr)
+- [Traduzione](#traduzione)
 - [Interfaccia e preferenze](#interfaccia-e-preferenze)
 - [Riga di comando](#riga-di-comando)
 - [Funzioni non supportate e limiti](#funzioni-non-supportate-e-limiti)
@@ -85,7 +86,7 @@ Per aggiornare si sostituisce l'app.
 
 ### Pagina «Attività»
 All'avvio si apre la pagina **Attività** (pulsante con la casetta all'inizio della barra principale, Alt+Home):
-- in alto le attività principali: aprire, creare, unire, scansionare, compilare un modulo, firmare, ridurre le dimensioni, convertire in PDF/A o PDF/X, esportare;
+- in alto le attività principali: aprire, creare, unire, scansionare, compilare un modulo, firmare, ridurre le dimensioni, convertire in PDF/A o PDF/X, esportare, tradurre, verificare le firme, oscurare informazioni;
 - in basso **Continua a lavorare**: gli ultimi 10 PDF aperti, con miniatura, cartella e data (tasto destro per toglierli dall'elenco).
 
 Ricompare quando si chiude l'ultimo documento; si può disattivare all'avvio in *Preferenze → Generale*.
@@ -123,6 +124,9 @@ Ricompare quando si chiude l'ultimo documento; si può disattivare all'avvio in 
 ### Firme
 - **Firma olografica**: disegnata con mouse o penna, oppure importata da una foto con lo sfondo reso trasparente; resta in una libreria personale.
 - **Firma digitale** PAdES con certificato `.p12`/`.pfx` o **smart card / token USB** (PKCS#11). Dettagli in [Firme digitali](#firme-digitali).
+
+### Traduzione
+- **Traduci PDF** (Ctrl+Maiusc+T): traduce il documento aperto o più PDF insieme, mantenendo l'impaginazione. Dettagli in [Traduzione](#traduzione).
 
 ### Esportazione, stampa e salvataggio
 - **Esporta** in PNG, JPG, TIFF (anche multipagina), testo semplice, **DOCX** e **ODT**, con titoli, paragrafi, tabelle e immagini ricostruiti.
@@ -206,6 +210,30 @@ Tesseract viene trovato automaticamente: nel PATH, in `C:\Program Files\Tesserac
 
 ---
 
+## Traduzione
+
+*File → Traduci PDF…* (Ctrl+Maiusc+T, oppure la scheda «Traduci un PDF» della pagina Attività) traduce il testo di ogni casella del PDF — paragrafi, titoli, voci di elenco, celle delle tabelle, didascalie — e lo riscrive nella stessa posizione, con lo stesso tipo di carattere, dimensione e colore. Immagini, grafica e impaginazione restano quelle dell'originale.
+
+- **Più file insieme**: oltre al documento aperto si possono aggiungere altri PDF (anche trascinandoli nella finestra).
+- **Lingua di partenza**: rilevata automaticamente per ogni file (dal testo di più pagine) oppure scelta a mano.
+- **File tradotti**: `<nome>_translated_<lingua>.pdf` nella cartella dell'originale; nome e cartella si possono cambiare (`{name}` e `{lang}` nello schema). Il documento aperto, una volta tradotto, si apre in una **scheda accanto all'originale**.
+- **Testo più lungo dell'originale**: si rimpicciolisce per entrare nella casella, fino a una dimensione minima scelta (predefinita 50 %). Le etichette su una riga possono anche allargarsi nello spazio libero a destra, senza superare linee di tabelle o altro testo.
+- **Restano invariati**: importi e numeri isolati, testo a spaziatura fissa (codice, comandi), indirizzi e-mail e web, percorsi e nomi di file, testo ruotato.
+- **Anche**, a scelta: commenti, segnalibri, titolo e oggetto del documento.
+- **Resoconto finale**: caselle rimpicciolite, caselle in cui il testo non entra del tutto e caselle in cui la traduzione ha cambiato dei numeri, con le pagine da controllare.
+
+**Motori** (*Preferenze → Traduzione*):
+
+| Motore | Note |
+|---|---|
+| **Locale** (predefinito) | funziona senza internet: il testo non lascia il computer. I modelli (circa 90 MB per direzione) si scaricano al primo uso; le coppie senza modello diretto passano per l'inglese. Lingue: arabo, bulgaro, catalano, ceco, cinese, coreano, danese, ebraico, estone, finlandese, francese, giapponese, greco, hindi, indonesiano, inglese, irlandese, italiano, lettone, lituano, malese, norvegese, olandese, persiano, polacco, portoghese, rumeno, russo, slovacco, sloveno, spagnolo, svedese, tedesco, thailandese, turco, ucraino, ungherese, urdu, vietnamita e altre |
+| **DeepL** | qualità più alta; serve una chiave API (gratuita o a pagamento). Il testo viene inviato ai server DeepL |
+| **LibreTranslate** | server pubblico o installato in proprio, con chiave facoltativa |
+
+Riga di comando: `pdfdesk --translate a.pdf b.pdf --to en [--from it] [--name "{name}_{lang}"] [--outdir cartella] [--engine local|deepl|libretranslate]` (DeepL usa la variabile `DEEPL_KEY`, LibreTranslate `LIBRETRANSLATE_URL` e `LIBRETRANSLATE_KEY`).
+
+---
+
 ## Interfaccia e preferenze
 
 - Quattro barre (**Principale**, **Pagine**, **Strumenti**, **Proprietà**) da agganciare in alto, in basso o ai lati della finestra.
@@ -222,6 +250,7 @@ Tesseract viene trovato automaticamente: nel PATH, in `C:\Program Files\Tesserac
 | Visualizzazione | ingrandimento iniziale, miniature, evidenziazione dei campi, griglia, selezione del testo |
 | Prestazioni | disegno della vista (Software o OpenGL), numero di processori |
 | Scansione e OCR | percorso di Tesseract |
+| Traduzione | motore (locale, DeepL, LibreTranslate), chiavi, modelli scaricati |
 
 **Prestazioni.** L'esportazione in immagini o testo e la ricerca nei documenti lunghi usano più processori, fino a *n − 1*. La vista OpenGL è sperimentale; se la scheda grafica non la supporta, il programma torna al disegno software.
 
@@ -237,6 +266,7 @@ pdfdesk --compress in.pdf out.pdf --preset medium           # comprime
 pdfdesk --compress in.pdf out.pdf --standard pdfa-2b        # converte in PDF/A-2b
 pdfdesk --check file.pdf [--standard pdfx-4]                # verifica la conformità
 pdfdesk --verify file.pdf                                   # verifica le firme digitali
+pdfdesk --translate a.pdf b.pdf --to en                     # traduce in inglese (a_translated_en.pdf, …)
 pdfdesk --merge uscita.pdf a.pdf b.pdf scansione.png        # unisce PDF e immagini
 pdfdesk --selftest                                          # autotest del programma
 pdfdesk --version
@@ -247,6 +277,7 @@ pdfdesk --version
 ## Funzioni non supportate e limiti
 
 **Non ancora supportate**
+- **Traduzione** verso lingue scritte da destra a sinistra (arabo, ebraico, persiano, urdu) e di PDF scansionati senza testo (serve prima l'OCR).
 - Moduli **XFA** (alcuni moduli dinamici di Adobe): si vede la pagina di ripiego. Sono supportati i moduli AcroForm.
 - **Firma remota** (OTP o app del prestatore).
 - **Carta d'Identità Elettronica (CIE)** per la firma, salvo che il sistema metta a disposizione un modulo PKCS#11 con il certificato di firma.
@@ -256,6 +287,7 @@ pdfdesk --version
 - Direct3D e Metal per la vista (disponibili Software e OpenGL).
 
 **Limiti**
+- **Traduzione**: grassetto o corsivo *dentro* una frase si perdono (la casella prende lo stile prevalente); la qualità del motore locale è inferiore a quella di DeepL e i termini tecnici vanno controllati; il testo tradotto non segue curve né spaziature particolari.
 - **Modifica testo** usa un carattere standard simile all'originale (Helvetica, Times o Courier) e non ridistribuisce il resto della pagina. Per i caratteri non latini serve un font TTF/OTF che li contenga.
 - **Font TTF/OTF** nelle caselle di testo: l'aspetto salvato è identico in qualsiasi lettore, ma per *modificare* la casella su un altro computer serve lo stesso font. Grassetto e corsivo non sono disponibili con questi font.
 - Il colore del testo di una casella è anche il colore del suo bordo (limite del formato PDF).
@@ -293,6 +325,6 @@ Compilazione per Windows da Linux (Wine), installatore, firma degli eseguibili, 
 
 ## Licenza
 
-**AGPL-3.0-or-later** (vedi [LICENSE](LICENSE)), perché il programma usa PyMuPDF (AGPL). Componenti principali: Qt/PySide6 (LGPL), pyHanko (MIT), cryptography (Apache/BSD), Ghostscript (AGPL). Elenco completo in [THIRD_PARTY.md](THIRD_PARTY.md).
+**AGPL-3.0-or-later** (vedi [LICENSE](LICENSE)), perché il programma usa PyMuPDF (AGPL). Componenti principali: Qt/PySide6 (LGPL), pyHanko (MIT), cryptography (Apache/BSD), Ghostscript (AGPL), CTranslate2 (MIT). Elenco completo in [THIRD_PARTY.md](THIRD_PARTY.md).
 
 PDFDesk — Guido Cauli <guido.cauli@gmail.com>
