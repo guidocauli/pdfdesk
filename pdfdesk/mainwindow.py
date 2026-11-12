@@ -19,6 +19,7 @@ from .core import (release_memory, PasswordRequired, PdfDocument, PdfError, T_FR
 from .inmenu import InMenuBar, wayland_session
 from .dialogs import (ModalPlacer, AboutDialog, ImageDialog, MergeDialog, ScanDialog, ExportDialog, ExtractImagesDialog, ImageOutDialog, MetadataDialog, FieldTextDialog, StandardDialog, PropertiesPanel, SaveDialog, SignatureLibraryDialog, SignDialog, TextDialog,
                       ThumbPanel, VerifyDialog, CertDialog, PreferencesDialog, settings)
+from .home import HomePage
 from .icons import app_icon, icon
 from .view import DocView, grid_from_settings, pix_to_qimage
 from . import export as exporter
@@ -110,8 +111,16 @@ class MainWindow(QMainWindow):
         self.tabbar.currentChanged.connect(self._on_tab_changed)
         self.tabbar.tabCloseRequested.connect(self._on_tab_close)
         self.tabbar.tabMoved.connect(self._on_tab_moved)
+        self.tabbar.tabBarClicked.connect(self._on_tab_clicked)
         lay.addWidget(self.tabbar)
         lay.addWidget(self.banner)
+        self.home = HomePage()
+        self.home.setVisible(False)
+        self.home.activity.connect(self.run_activity)
+        self.home.open_recent.connect(self._open_from_home)
+        self.home.remove_recent.connect(self._remove_recent)
+        self._dock_was = None                        # visibilità delle miniature prima della pagina Attività
+        lay.addWidget(self.home, 1)
         lay.addWidget(self.view, 1)
         lay.addWidget(self._make_findbar())
         self.setCentralWidget(central)
@@ -174,6 +183,8 @@ class MainWindow(QMainWindow):
         if path:
             paths = [path] if isinstance(path, str) else list(path)
             QTimer.singleShot(0, lambda: [self.open_path(p) for p in paths])
+        elif s.value("ui/home_start", True) not in (False, "false", 0, "0"):
+            self.show_home(True)
 
     # ================================================================== costruzione UI
     def _make_banner(self) -> QFrame:
@@ -231,6 +242,8 @@ class MainWindow(QMainWindow):
         self.a_save = A(tr("&Salva"), self.save, tr("Ctrl+S"))
         self.a_saveas = A(tr("Salva con nome / &Ottimizza…"), self.save_as, tr("Ctrl+Shift+S"),
                           tr("Salva scegliendo qualità e compressione"))
+        self.a_home = A(tr("&Attività"), self.toggle_home, tr("Alt+Home"), tr("Mostra la pagina delle attività e dei documenti recenti"))
+        self.a_home.setIcon(icon("home")); self.a_home.setCheckable(True)
         self.a_close = A(tr("&Chiudi"), self.close_doc, tr("Ctrl+W"))
         self.a_quit = A(tr("&Esci"), self.close, tr("Ctrl+Q"))
         self.a_new = A(tr("&Nuovo PDF vuoto"), self.new_doc, tr("Ctrl+N"))
@@ -360,6 +373,8 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         m.addAction(self.a_prefs)
         m = mb.addMenu(tr("&Visualizza"))
+        m.addAction(self.a_home)
+        m.addSeparator()
         m.addMenu(self.menu_zoom)
         m.addAction(self.a_z100)
         m.addSeparator()
@@ -449,6 +464,8 @@ class MainWindow(QMainWindow):
     def _build_toolbars(self) -> None:
         # --- Principale
         main = self._bar(tr("Principale"), "toolMain")
+        main.addAction(self.a_home)
+        main.addSeparator()
         for a in (self.a_new, self.a_open, self.a_save, self.a_saveas, self.a_standard, self.a_print, self.a_export):
             main.addAction(a)
         main.addSeparator()
@@ -675,7 +692,7 @@ class MainWindow(QMainWindow):
         name = os.path.basename(self.pdf.path) if has and self.pdf.path else (tr("Senza titolo") if has else "")
         mod = "*" if has and self.pdf.modified else ""
         self.setWindowTitle(tr("{}{} — PDFDesk").format(mod, name) if has else tr("PDFDesk"))
-        if has and self.pdf.is_signed:
+        if has and self.pdf.is_signed and not self.home_visible():
             self.banner_lbl.setText(tr("🔒 Questo PDF contiene {} firma/e digitale/i. Le modifiche vengono aggiunte come revisione successiva (le firme restano riconoscibili nella loro revisione); la compressione non è disponibile.").format(self.pdf.signed_count))
             self.banner.show()
         else:
@@ -693,10 +710,86 @@ class MainWindow(QMainWindow):
             self.lbl_total.setText(" / 0 ")
 
     def _rebuild_recent(self) -> None:
+        if self.home_visible():
+            self.home.set_recent(list(settings().value("recent", []) or []))
         self.menu_recent.clear()
         for p in (settings().value("recent", []) or [])[:int(settings().value("recent_max", 10))]:
             if os.path.exists(p):
                 self.menu_recent.addAction(os.path.basename(p), lambda _=False, pp=p: self.open_path(pp)).setToolTip(p)
+
+    # ---------------------------------------------------------------- pagina «Attività»
+    def home_visible(self) -> bool:
+        return not self.home.isHidden()
+
+    def show_home(self, on: bool) -> None:
+        if on == self.home_visible():
+            self.a_home.setChecked(on)
+            return
+        if on:
+            self.home.set_recent(list(settings().value("recent", []) or []))
+            self._dock_was = self.dock_pages.isVisible()
+            self.dock_pages.hide()
+            self.view.hide(); self.banner.hide()
+            self.home.show()
+        else:
+            self.home.hide(); self.view.show()
+            if self._dock_was is not None:
+                self.dock_pages.setVisible(self._dock_was)
+            self._dock_was = None
+            if self.pdf is not None:
+                self._refresh_ui()                             # ripristina il riquadro delle firme
+        self.a_home.setChecked(on)
+
+    def toggle_home(self) -> None:
+        """Pulsante «Attività»: apre la pagina; se è già aperta torna al documento attivo (se ce n'è uno)."""
+        if self.home_visible() and self.pdf is not None:
+            self.show_home(False)
+        else:
+            self.show_home(True)
+
+    def _on_tab_clicked(self, i: int) -> None:
+        if 0 <= i < len(self.docs) and self.docs[i] is self.pdf and self.home_visible():
+            self.show_home(False)                         # clic sulla scheda già attiva: torna al documento
+
+    def _open_from_home(self, path: str) -> None:
+        if not os.path.exists(path):
+            self._remove_recent(path)
+            QMessageBox.warning(self, tr("Apri recenti"), tr("Il file non esiste più:\n{}").format(path))
+            return
+        self.open_path(path)
+
+    def _remove_recent(self, path: str) -> None:
+        s = settings()
+        s.setValue("recent", [p for p in (s.value("recent", []) or []) if p != path])
+        self._rebuild_recent()
+
+    def run_activity(self, key: str) -> None:
+        """Attività scelta nella pagina iniziale. Quelle che lavorano su un documento chiedono prima quale PDF aprire."""
+        if key == "open":
+            return self.open_dialog()
+        if key == "new":
+            return self.new_doc()
+        if key == "merge":
+            return self.merge_dialog()
+        if key == "scan":
+            return self.scan_dialog()
+        start = settings().value("lastdir", "")
+        path, _ = QFileDialog.getOpenFileName(self, tr("Scegli il PDF"), start, tr("PDF (*.pdf);;Tutti i file (*)"))
+        if not path or not self.open_path(path):
+            return
+        if key == "form":
+            if self.pdf.has_form():
+                self.set_tool("form")
+            else:
+                QMessageBox.information(self, tr("Compila un modulo"), tr("Questo PDF non contiene campi da compilare."))
+        elif key == "sign":
+            self.sign_digital()
+        elif key == "compress":
+            self.save_as()
+        elif key == "standard":
+            self.standard_dialog()
+        elif key == "export":
+            self.export_doc(None)
 
     def _add_recent(self, path: str) -> None:
         s = settings()
@@ -881,6 +974,7 @@ class MainWindow(QMainWindow):
 
     def _activate(self, doc: PdfDocument, fresh: bool = False) -> None:
         """Mostra `doc` (scheda attiva): vista, miniature, stato; una scheda già vista riprende zoom e posizione."""
+        self.show_home(False)
         self.pdf = doc
         self.found = []
         self.found_idx = -1
@@ -944,6 +1038,7 @@ class MainWindow(QMainWindow):
                 self.view.set_document(None)
                 self.thumbs.set_count(0)
                 self._refresh_ui()
+                self.show_home(True)
         else:
             self._refresh_ui()
         return True
@@ -1007,6 +1102,8 @@ class MainWindow(QMainWindow):
                     return
         s = settings()
         s.setValue("geometry", self.saveGeometry())
+        if self._dock_was is not None:
+            self.dock_pages.setVisible(self._dock_was)          # la pagina Attività non deve cambiare il layout salvato
         s.setValue("windowState2", self.saveState())
         for d in self.docs:
             d.close()

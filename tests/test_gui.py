@@ -15,6 +15,7 @@ from make_samples import make_text_pdf
 from pdfdesk import shutdown as _shutdown; _shutdown.install_atexit(); _shutdown.watchdog()      # chiusura ordinata delle finestre lasciate aperte dai test
 from pdfdesk.mainwindow import MainWindow
 from pdfdesk import dialogs, signing, sigstore
+from pdfdesk.dialogs import settings
 from pdfdesk.core import T_INK, T_SQUARE, T_STAMP, T_FREETEXT
 
 QSettings.setDefaultFormat(QSettings.IniFormat); QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, TMP)
@@ -1025,6 +1026,101 @@ class GpuModeTests(unittest.TestCase):
         d.gpu.setCurrentIndex(d.gpu.findData("opengl")); d.store()
         self.assertEqual(str(dialogs.settings().value("ui/gpu")), "opengl")
         d.deleteLater()
+
+
+class HomePageTests(unittest.TestCase):
+    """Pagina «Attività»: all'avvio, pulsante della barra, recenti, attività, chiusura dell'ultimo documento."""
+
+    def setUp(self):
+        settings().clear()
+        import tempfile, shutil
+        self.tmp = tempfile.mkdtemp()
+        self.recents = []
+        for i in range(12):
+            p = os.path.join(self.tmp, f"doc{i}.pdf"); shutil.copy(SRC, p); self.recents.append(p)
+        settings().setValue("recent", self.recents + [os.path.join(self.tmp, "sparito.pdf")])
+        settings().setValue("recent_max", 30)
+
+    def tearDown(self):
+        settings().clear()
+
+    def test_shown_at_startup_with_recent_and_activities(self):
+        w = MainWindow(); w.resize(1200, 860); w.show(); wait(100)
+        try:
+            self.assertTrue(w.home_visible()); self.assertFalse(w.view.isVisible()); self.assertTrue(w.a_home.isChecked())
+            self.assertFalse(w.dock_pages.isVisible())
+            self.assertEqual(len(w.home.rows), 10)                                  # massimo 10, i file mancanti esclusi
+            self.assertEqual([r.path for r in w.home.rows], self.recents[:10])
+            self.assertEqual(set(w.home.cards), {"open", "new", "merge", "scan", "form", "sign", "compress", "standard", "export"})
+            self.assertIs(w.bars[0].actions()[0], w.a_home)                         # primo pulsante della barra principale
+        finally:
+            w.close(); wait(30)
+
+    def test_not_shown_when_opening_a_file_or_disabled(self):
+        w = MainWindow(SRC); w.show(); wait(300)
+        try:
+            self.assertFalse(w.home_visible()); self.assertTrue(w.view.isVisible())
+        finally:
+            w.pdf.modified = False; w.close(); wait(30)
+        settings().setValue("ui/home_start", False)
+        w = MainWindow(); w.show(); wait(50)
+        try:
+            self.assertFalse(w.home_visible())
+        finally:
+            w.close(); wait(30)
+
+    def test_open_recent_toggle_and_close_last(self):
+        w = MainWindow(); w.resize(1200, 860); w.show(); wait(100)
+        try:
+            dock = w.dock_pages.isVisible()
+            w.home.rows[2].click(); wait(300)
+            self.assertIsNotNone(w.pdf); self.assertEqual(w.pdf.path, self.recents[2])
+            self.assertFalse(w.home_visible()); self.assertTrue(w.view.isVisible())
+            w.a_home.trigger(); wait(50)
+            self.assertTrue(w.home_visible()); self.assertEqual(w.home.rows[0].path, self.recents[2])   # appena aperto: primo
+            w.a_home.trigger(); wait(50)
+            self.assertFalse(w.home_visible())                                      # di nuovo: torna al documento
+            w.a_home.trigger(); wait(50)
+            w._on_tab_clicked(0); wait(50); self.assertFalse(w.home_visible())        # clic sulla scheda attiva
+            w.close_doc(); wait(100)
+            self.assertIsNone(w.pdf); self.assertTrue(w.home_visible())             # chiuso l'ultimo: pagina Attività
+            w.a_home.trigger(); wait(50); self.assertTrue(w.home_visible())         # senza documenti resta aperta
+        finally:
+            if w.pdf: w.pdf.modified = False
+            w.close(); wait(30)
+
+    def test_remove_recent_and_activities_ask_for_file(self):
+        import unittest.mock as m
+        from PySide6.QtWidgets import QFileDialog
+        w = MainWindow(); w.show(); wait(50)
+        try:
+            w.home.remove_recent.emit(self.recents[0]); wait(20)
+            self.assertNotIn(self.recents[0], [r.path for r in w.home.rows])
+            self.assertNotIn(self.recents[0], settings().value("recent"))
+            calls = []
+            with m.patch.object(QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: ("", ""))):
+                for k in ("form", "sign", "compress", "standard", "export"):
+                    w.home.cards[k].click()                                     # annullando la scelta non succede nulla
+            self.assertIsNone(w.pdf); self.assertTrue(w.home_visible())
+            with m.patch.object(QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: (__import__("test_features").FORM, ""))):
+                w.home.cards["form"].click(); wait(300)
+            self.assertEqual(w.tool, "form"); self.assertFalse(w.home_visible())
+            with m.patch.object(w, "new_doc", lambda: calls.append("new")), m.patch.object(w, "merge_dialog", lambda: calls.append("merge")):
+                w.run_activity("new"); w.run_activity("merge")
+            self.assertEqual(calls, ["new", "merge"])
+        finally:
+            if w.pdf: w.pdf.modified = False
+            w.close(); wait(30)
+
+    def test_dock_state_is_not_saved_hidden(self):
+        w = MainWindow(); w.show(); wait(50)
+        self.assertTrue(w.home_visible()); was = w._dock_was
+        w.close(); wait(30)
+        w2 = MainWindow(); w2.show(); wait(50)
+        try:
+            w2.show_home(False); self.assertEqual(w2.dock_pages.isVisible(), was)
+        finally:
+            w2.close(); wait(30)
 
 
 if __name__ == "__main__":

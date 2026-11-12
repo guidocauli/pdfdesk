@@ -349,6 +349,11 @@ def _tabnext(p, c):
     p.drawRect(QRectF(6, 14, 36, 24)); p.drawLine(6, 22, 42, 22); p.drawLine(24, 14, 24, 22)
 
 
+def _home(p, c):
+    p.drawPolygon(QPolygonF([QPointF(6, 24), QPointF(24, 8), QPointF(42, 24)]))
+    p.drawRect(QRectF(11, 22, 26, 18)); p.drawRect(QRectF(20, 29, 8, 11))
+
+
 def _merge(p, c):
     p.drawRect(QRectF(6, 6, 18, 24)); p.drawRect(QRectF(14, 14, 18, 24))
     p.setBrush(c); p.drawPolygon(QPolygonF([QPointF(36, 24), QPointF(28, 18), QPointF(28, 30)]))
@@ -359,7 +364,7 @@ def _scan(p, c):
     p.drawLine(16, 11, 32, 11); p.drawLine(16, 16, 28, 16); p.drawLine(9, 32, 39, 32)
 
 
-_DRAW = {"merge": _merge, "scan": _scan, "select": _select, "hand": _hand, "textsel": _textsel, "pen": _pen, "highlighter": _highlighter, "rect": _rect,
+_DRAW = {"home": _home, "merge": _merge, "scan": _scan, "select": _select, "hand": _hand, "textsel": _textsel, "pen": _pen, "highlighter": _highlighter, "rect": _rect,
          "ellipse": _ellipse, "line": _line, "arrow": _arrow, "text": _text, "image": _image, "sign": _sign, "hl": _hl,
          "ul": _ul, "st": _st, "redact": _redact, "applyred": _applyred, "group": _group, "ungroup": _ungroup, "edittext": _edittext, "eraser": _eraser, "comment": _comment, "sigbox": _sign, "app": _app,
          "open": _open, "save": _save, "saveas": _saveas, "new": _new, "undo": _undo, "redo": _redo, "zoom": _mag,

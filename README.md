@@ -48,8 +48,8 @@ Installazione silenziosa: `setup.exe /S [/CERT] [/OCR] [/D=C:\percorso]`.
 ### Linux
 
 ```bash
-mkdir pdfdesk && tar xzf pdfdesk-<versione>-linux-x86_64.tar.gz -C pdfdesk
-cd pdfdesk
+tar xzf pdfdesk-<versione>-linux-x86_64.tar.gz
+cd pdfdesk-<versione>
 ./install.sh                 # per l'utente corrente (~/.local)
 sudo ./install.sh --system   # per tutti gli utenti (/opt/pdfdesk)
 ```
@@ -82,6 +82,13 @@ Per aggiornare si sostituisce l'app.
 ---
 
 ## Funzioni
+
+### Pagina «Attività»
+All'avvio si apre la pagina **Attività** (pulsante con la casetta all'inizio della barra principale, Alt+Home):
+- in alto le attività principali: aprire, creare, unire, scansionare, compilare un modulo, firmare, ridurre le dimensioni, convertire in PDF/A o PDF/X, esportare;
+- in basso **Continua a lavorare**: gli ultimi 10 PDF aperti, con miniatura, cartella e data (tasto destro per toglierli dall'elenco).
+
+Ricompare quando si chiude l'ultimo documento; si può disattivare all'avvio in *Preferenze → Generale*.
 
 ### Visualizzazione
 - Più PDF aperti insieme, uno per scheda; ogni scheda ricorda zoom, posizione e cronologia di annulla.
@@ -209,7 +216,7 @@ Tesseract viene trovato automaticamente: nel PATH, in `C:\Program Files\Tesserac
 
 | Sezione | Contenuto |
 |---|---|
-| Generale | lingua (italiano, inglese), numero di file recenti |
+| Generale | lingua (italiano, inglese), numero di file recenti, pagina «Attività» all'avvio |
 | Aspetto | tema (sistema, chiaro, scuro), menu a tendina, dimensione del testo (70–200 %), scala per schermi HiDPI/Retina (100–300 %) |
 | Barre degli strumenti | icone, testo sui pulsanti, disposizione, blocco |
 | Visualizzazione | ingrandimento iniziale, miniature, evidenziazione dei campi, griglia, selezione del testo |

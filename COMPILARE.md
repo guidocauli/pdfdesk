@@ -47,7 +47,7 @@ Con `--skip-tests` `build.sh` salta la suite di test.
 
 | Comando | Risultato |
 |---|---|
-| `./build.sh` (Linux) | `dist/pdfdesk-<versione>-linux-x86_64.tar.gz` |
+| `./build.sh` (Linux) | `dist/pdfdesk-<versione>-linux-x86_64.tar.gz`, che si estrae in `pdfdesk-<versione>/` |
 | `./build.sh` (macOS) | `dist/pdfdesk-<versione>-macos-<arch>.zip` con `sblocca.sh` |
 | `./build_installer.sh` | `dist/pdfdesk-<versione>-windows-x86_64-setup.exe`, firmato |
 | `./make_sources.sh` | `dist/pdfdesk-<versione>-sorgenti.tar.gz` (senza chiavi di firma) |

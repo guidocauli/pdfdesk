@@ -1492,6 +1492,12 @@ class PreferencesDialog(QDialog):
         self.recent.setToolTip(tr("Quanti file mostrare in File → Apri recenti (0 = nessuno)"))
         f3.addRow(tr("Numero massimo"), self.recent)
         pg_gen.addWidget(g3)
+        g8 = QGroupBox(tr("Avvio")); f8 = QVBoxLayout(g8)
+        self.home_start = QCheckBox(tr("Mostra la pagina «Attività» all'avvio"))
+        self.home_start.setChecked(s.value("ui/home_start", True) not in (False, "false", 0, "0"))
+        self.home_start.setToolTip(tr("All'avvio senza file da aprire mostra le attività principali e i documenti recenti"))
+        f8.addWidget(self.home_start)
+        pg_gen.addWidget(g8)
         for v in (pg_gen, pg_look, pg_bars, pg_view, pg_perf, pg_ocr):
             v.addStretch(1)
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel | QDialogButtonBox.RestoreDefaults)
@@ -1524,12 +1530,13 @@ class PreferencesDialog(QDialog):
 
     def _defaults(self) -> None:
         self.theme.setCurrentIndex(0); self.menus.setCurrentIndex(0); self.icons.setCurrentIndex(1); self.style.setCurrentIndex(0); self.rows.setCurrentIndex(0); self.locked.setChecked(False)
-        self.zoom.setCurrentIndex(0); self.thumbs.setChecked(True); self.fields.setChecked(True); self.recent.setValue(10)
+        self.zoom.setCurrentIndex(0); self.thumbs.setChecked(True); self.fields.setChecked(True); self.recent.setValue(10); self.home_start.setChecked(True)
         self.grid_snap.setChecked(False); self.grid_show.setChecked(False); self.grid_unit.setCurrentIndex(0); self.grid_x.setValue(5.0); self.grid_y.setValue(5.0); self.textsel.setCurrentIndex(0); self.fontpct.setValue(100); self.lang.setCurrentIndex(0); self.scale.setCurrentIndex(0); self.gpu.setCurrentIndex(0); self.cores.setCurrentIndex(0); self.ocr_path.clear(); self._ocr_refresh()
 
     def store(self) -> None:
         s = settings()
         s.setValue("ui/prefpage", self.nav.currentRow())
+        s.setValue("ui/home_start", self.home_start.isChecked())
         s.setValue("ui/theme", self.theme.currentIndex()); s.setValue("ui/inmenus", self.menus.currentIndex()); s.setValue("ui/iconsize", self.icons.currentIndex()); s.setValue("ui/btnstyle", self.style.currentIndex())
         s.setValue("ui/rows", self.rows.currentIndex()); s.setValue("ui/locked", self.locked.isChecked())
         s.setValue("view/initzoom", self.zoom.currentIndex()); s.setValue("view/thumbs", self.thumbs.isChecked())
