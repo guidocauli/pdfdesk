@@ -4,6 +4,7 @@
 import os, sys, tempfile, unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))          # make_samples (anche con python -I)
 TMP = tempfile.mkdtemp(prefix="pdfdesk-tr-")
 os.environ["PDFDESK_DATA"] = os.path.join(TMP, "data")
 
