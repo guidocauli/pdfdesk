@@ -1,217 +1,291 @@
-# PDFDesk — Guido Cauli <guido.cauli@gmail.com>
+# PDFDesk
 
-Editor PDF grafico e semplice da usare per **Windows, Linux e macOS**, distribuito come **singolo eseguibile** (nessuna installazione di Python o di librerie).
+**PDFDesk — Guido Cauli <guido.cauli@gmail.com>**
 
-## Cosa fa
+Editor PDF grafico per **Windows, Linux e macOS**. Si distribuisce come singolo eseguibile: non serve installare Python né altre librerie.
 
-| Funzione | Come |
+- [Download e installazione](#download-e-installazione)
+- [Funzioni](#funzioni)
+- [Firme digitali](#firme-digitali)
+- [PDF/A e PDF/X](#pdfa-e-pdfx)
+- [Scansione e OCR](#scansione-e-ocr)
+- [Interfaccia e preferenze](#interfaccia-e-preferenze)
+- [Riga di comando](#riga-di-comando)
+- [Funzioni non supportate e limiti](#funzioni-non-supportate-e-limiti)
+- [Compilare dai sorgenti](#compilare-dai-sorgenti)
+- [Licenza](#licenza)
+
+---
+
+## Download e installazione
+
+I pacchetti si trovano nella pagina [Releases](https://github.com/guidocauli/pdfdesk/releases).
+
+| Sistema | File |
 |---|---|
-| Aprire e visualizzare PDF | scorrimento continuo, zoom (Ctrl+rotella, adatta larghezza/pagina), miniature, ricerca testo (Ctrl+F), PDF protetti da password, trascina e rilascia |
-| Annotare e disegnare | **Penna**, **Evidenziatore**, evidenzia/sottolinea/barra il **testo**, linee, frecce, rettangoli e ellissi (cornici o aree colorate), colore/spessore/opacità |
-| Caselle di testo | crea (trascina), modifica con doppio clic, cambia carattere/dimensione/colore/sfondo e **stile** (grassetto, corsivo, sottolineato, barrato: dialogo e barra delle proprietà; grassetto/corsivo non con i font TTF/OTF aggiunti); sposta e ridimensiona con le maniglie. Gli stili valgono anche in «Modifica testo» |
-| **Commenti** | strumento «Commento» (C): clic sulla pagina e scrivi; è una nota standard del PDF (visibile in qualsiasi lettore), si sposta, si rilegge passandoci sopra e si modifica con doppio clic |
-| Immagini: **rotazione** | menu contestuale *Ruota di un angolo…* (gradi), *Ruota di 90°*, oppure con il mouse: un secondo clic su un'immagine già selezionata attiva la modalità rotazione (Maiusc = scatti di 15°) |
-| Strumenti e scorciatoie | **Esc** riporta sempre allo strumento Seleziona; doppio clic su un oggetto con Seleziona passa allo strumento adatto (testo → Modifica testo, immagine → Modifica oggetti, forme e annotazioni → il loro strumento); «Firma olografica» usa un cursore a mirino con il segno di firma |
-| Font **TTF/OTF** | nel selettore del carattere: *Aggiungi font…* importa file `.ttf`/`.otf` nella libreria personale; sono disponibili anche i font installati nel sistema. Funzionano nelle caselle di testo e in «Modifica testo» |
-| **Moduli** compilabili | strumento «Compila modulo» (K): clic su un campo per scrivere (anche multiriga), spuntare caselle e opzioni, scegliere dai menu; i campi sono evidenziati; *Moduli → Appiattisci* rende fisso il contenuto |
-| Modificare il testo esistente | strumento «Modifica testo»: riscrive un blocco di testo del PDF (il vecchio testo viene rimosso dal file) |
-| Redazione | segna aree da oscurare, poi **Applica redazioni**: testo, immagini e grafica sotto l'area sono rimossi in modo permanente |
-| Inserire immagini | da file (PNG con trasparenza supportato), spostabili e ridimensionabili |
-| Gestire le pagine | riordina trascinando le miniature, ruota, duplica, elimina, inserisci pagine vuote o da un altro PDF, estrai in un nuovo PDF |
-| Firma **olografica** | disegna la firma con mouse/penna o importala da una foto (sfondo reso trasparente); resta in una libreria e si inserisce con un clic |
-| Firma **digitale** | PAdES con certificato `.p12/.pfx` **oppure con smart card / token USB** (PKCS#11, PIN o pinpad del lettore); riquadro visibile opzionale con la firma-immagine; firma anche nei **campi firma** dei moduli; marca temporale RFC 3161 opzionale |
-| Verifica firme | integrità, copertura, attendibilità di ogni firma (la funzione è disponibile solo se il documento contiene firme digitali) |
-| **PDF/A** e **PDF/X** | conversione a PDF/A-1b, 2b, 3b (archiviazione) e PDF/X-1a, X-3, X-4 (stampa) e verifica di conformità; il file aperto che dichiara uno standard viene riconosciuto e, dopo le modifiche, si può **ripristinare la conformità** al salvataggio |
-| **Schede** | più PDF aperti insieme, uno per scheda (Ctrl+O anche con selezione multipla, trascina più file, `pdfdesk a.pdf b.pdf`); Ctrl+W chiude, Ctrl+Tab cambia; ogni scheda ricorda zoom, posizione e cronologia di annulla; un asterisco segna le modifiche non salvate |
-| **Stampa** | File → Stampa (Ctrl+P): stampanti di sistema o «Stampa su file PDF», tutte le pagine, intervallo o pagina corrente |
-| **Esporta** | File → Esporta (Ctrl+Maiusc+E): **immagini PNG / JPG / TIFF** (risoluzione, qualità, TIFF multipagina), **testo semplice**, **DOCX** e **ODT** con la struttura ricostruita: titoli, paragrafi (grassetto, corsivo, dimensione, colore, allineamento), tabelle, immagini e interruzioni di pagina |
-| Salvare a diverse qualità | *Originale*, *Alta* (300 dpi), *Media* (150), *Bassa* (96), *Minima* (72); opzioni: scala di grigi, rimuovi metadati, riduci i font |
+| Windows 10/11 (64 bit) | `pdfdesk-<versione>-windows-x86_64-setup.exe` (installatore) oppure `…-windows-x86_64.zip` (portatile) |
+| Linux x86_64 | `pdfdesk-<versione>-linux-x86_64.tar.gz` |
+| macOS Apple Silicon (M1 e successivi) | `pdfdesk-<versione>-macos-arm64.zip` |
+| Sorgenti | `pdfdesk-<versione>-sorgenti.tar.gz` |
 
-Il **testo resta sempre testo** (selezionabile e ricercabile): la compressione agisce solo su immagini e struttura del file.
+### Windows
 
-## Firme digitali e compressione: cosa è possibile
+1. Esegui `…-setup.exe` (servono i diritti di amministratore).
+2. Nei componenti puoi scegliere:
+   - **Collegamento sul desktop** e **«Apri con» per i PDF**;
+   - **Certificato dell'editore**: rende riconosciuta la firma del programma ed evita l'avviso «editore sconosciuto» di SmartScreen;
+   - **OCR**: scarica Tesseract da internet per rendere ricercabili le scansioni (vedi [Scansione e OCR](#scansione-e-ocr)).
+3. Il programma viene installato in `C:\Program Files\PDFDesk`.
 
-Una firma digitale protegge l'esatto contenuto del file: **qualsiasi riscrittura del file, compressione compresa, invalida le firme già presenti**. Per questo:
+Per **aggiornare** basta eseguire l'installatore della nuova versione: aggiorna la cartella esistente e mantiene impostazioni e firme salvate. Per **disinstallare** usa *Impostazioni → App*.
 
-- **Comprimere e firmare**: usa *Firma → Firma digitale*, che comprime *prima* e firma *dopo* (il file finale è firmato e valido).
-- **PDF già firmato**: si può annotare e salvare, ma le modifiche vengono aggiunte come *revisione successiva* e le firme restano valide; in questi documenti Annulla e compressione sono disattivati. Se scegli comunque di comprimere, il programma chiede conferma ed elimina i campi firma (non restano firme «rotte»).
-- Si possono aggiungere **più firme** in sequenza senza invalidare le precedenti.
+Versione portatile: estrai lo zip ed esegui `pdfdesk.exe`. Per installare il certificato, clic destro su `installa-certificato.cmd` → *Esegui come amministratore*.
 
-I certificati autofirmati (si creano da *Firma → Crea certificato autofirmato*) garantiscono l'integrità ma i lettori PDF li segnalano «non attendibili». Per firme con valore legale servono certificati di un prestatore qualificato.
+Installazione silenziosa: `setup.exe /S [/CERT] [/OCR] [/D=C:\percorso]`.
 
-## Metadati, compressione, estrazione, firme
+> Gli eseguibili sono firmati con il certificato **autofirmato** «PDFDesk - Guido Cauli» (`pdfdesk-sign.cer`, impronta SHA-256 `9A:26:92:17:2A:EF:24:83:C1:00:CD:31:A2:90:F8:94:75:97:39:C3:C4:11:4B:C0:28:26:85:60:01:C9:F6:2D`). Installalo solo se hai scaricato il programma da questa pagina.
 
-- **Redazione per oggetto**: con lo strumento Redazione un clic segna l'intero testo, immagine o grafica sotto il cursore (un secondo clic sul segno lo toglie); in alternativa si trascina un'area. I segni sono annotazioni selezionabili e ogni passo si annulla con Annulla finché non applichi le redazioni.
-- **Menu contestuale** (tasto destro): seleziona l'oggetto sotto il cursore e offre le funzioni pertinenti: per testo del PDF modifica, copia, evidenzia/sottolinea/barra; per le immagini salva; per ogni oggetto o annotazione segna per la redazione, elimina, salva l'area come immagine o copiala negli appunti; per i campi modifica; su pagina vuota aggiungi testo o immagine, ruota, duplica, elimina pagina.
-- **Trasparenza**: le immagini con canale alfa o maschera morbida (PNG, JPX, SMask, anche CMYK) si spostano, estraggono e mostrano conservando l'alfa.
-- Tutte le finestre di dialogo sono modali sull'intera applicazione.
+### Linux
 
-- **Metadati** (File ▸ Metadati, Ctrl+D): visualizza e modifica i campi standard (titolo, autore, oggetto, parole chiave, date), aggiunge o elimina campi personalizzati, mostra l'XMP e permette di rigenerarlo o rimuoverlo. L'operazione si può annullare.
-- **Redazione**: nella conferma c'è l'opzione «Rimuovi anche i metadati» (Info, campi personalizzati, XMP).
-- **Salva con nome**: schede *Qualità* (preset o «Personalizzata»: soglia e risoluzione di arrivo, qualità JPEG, tipi di immagine, ricompressione con/senza perdita), *Avanzate* (garbage collection, flussi di contenuto, flussi di oggetti, miniature, allegati, JavaScript, Fast web view) e *Analisi e stima* (dove sta lo spazio e dimensione prevista). Con PDF/A e PDF/X i controlli di compressione sono disattivati perché i parametri sono obbligatori.
-- **Estrazione**: *Strumenti ▸ Estrai immagini…* salva tutte (o le scelte) le immagini incorporate; lo strumento «Estrai immagine/area» salva l'immagine cliccata o un'area trascinata (testo, grafica e immagini insieme) in PNG, JPG o TIFF, oppure la copia negli appunti.
-- **Firme digitali** (Verifica firme): elenco delle firme e, per quella selezionata, tutti i dati: esito, integrità, copertura e modifiche successive, DocMDP, data dichiarata e marca temporale, motivo/luogo/contatto, algoritmi, byte range, revisione, e per ogni certificato soggetto, emittente, seriale, validità, chiave, usi, impronte SHA-1/SHA-256. Il testo si può copiare.
-
-## Unire PDF e scansione
-
-- **Unisci PDF** (File ▸ Unisci PDF…, disponibile anche senza documenti aperti): aggiungi PDF e immagini, riordinali trascinando o con Su/Giù (anche «Ordina per nome» e «Inverti ordine»), limita le pagine di ogni file (es. `1-3,5`), gestisce i PDF protetti da password; opzione per un segnalibro per ogni file sorgente. Da riga di comando: `pdfdesk --merge uscita.pdf a.pdf b.pdf scansione.png`.
-- **Crea PDF da scansione** (File ▸ Crea PDF da scansione…): usa **WIA** su Windows (PowerShell, incluso in Windows) e **SANE** su Linux e macOS (comando `scanimage`: pacchetto `sane-utils` su Debian/Ubuntu, `sane` su Arch/RedHat, `sane-backends` con Homebrew su macOS). Si scelgono scanner, origine (piano o alimentatore automatico, che acquisisce tutte le pagine), modo (colore, grigi, bianco e nero), risoluzione e formato carta. Le pagine acquisite si riordinano, si ruotano e si eliminano; si possono aggiungere immagini già salvate. Il PDF ha la dimensione fisica corretta, compressione PNG o JPEG a scelta e, se è installato **Tesseract**, l'OCR per rendere il testo ricercabile. Senza driver resta l'importazione da file immagine.
-  - **Installare Tesseract (OCR)**: su **Windows** l'installatore ha il componente «OCR» (scarica Tesseract da internet, versione fissata e controllo SHA-256; in modalità silenziosa solo con `/OCR`) e, dalla finestra della scansione, il pulsante «Scarica OCR». Tesseract viene cercato nel PATH e in `C:\Program Files\Tesseract-OCR`, accanto a PDFDesk e nel profilo utente: **non serve modificare il PATH**; in Preferenze → *Percorso di Tesseract (OCR)* si può indicare un percorso diverso. Su **Linux/macOS** si installa con il gestore pacchetti: `sudo apt install tesseract-ocr tesseract-ocr-ita` (Debian/Ubuntu), `sudo dnf install tesseract tesseract-langpack-ita` (RedHat), `sudo pacman -S tesseract tesseract-data-ita` (Arch), `brew install tesseract tesseract-lang` (macOS).
-- Limite: non c'è un driver nativo macOS (ImageCaptureCore): serve SANE, oppure si importano le immagini acquisite con l'app Acquisizione Immagine.
-
-## Font, moduli e smart card: dettagli
-
-**Font TTF/OTF.** Le caselle con font personale sono annotazioni il cui aspetto è disegnato dal programma, quindi si vedono identiche in qualsiasi lettore. Il font **non** viene incorporato per intero nel file (licenze e dimensioni): se apri il PDF su un altro computer senza quel font, l'aspetto già salvato resta corretto, ma per *modificare* quella casella serve avere il font (altrimenti il programma lo segnala e puoi sceglierne un altro). Le caselle accettano qualsiasi carattere presente nel font (accenti, €, greco, cirillico, …).
-
-**Moduli.** Supporta i moduli AcroForm (la grande maggioranza): testo, multiriga, caselle, opzioni, menu a tendina e liste, campi di firma. Non supporta i moduli **XFA** (alcuni moduli dinamici di Adobe): in quel caso il PDF mostra la pagina di ripiego. Compilare un modulo già firmato aggiunge una revisione senza invalidare le firme precedenti; appiattire invece è bloccato nei file firmati. Nota: *Appiattisci* trasforma in testo fisso anche i campi firma ancora vuoti.
-
-**Smart card.** In *Firma → Firma digitale* scegli «Smart card / token USB», indica il modulo **PKCS#11** del produttore (il programma cerca da solo OpenSC e i driver più comuni: Bit4id, Aruba Key, InfoCamere/Incard, SafeNet…), premi *Rileva* e scegli il certificato di firma. Il PIN non viene mai salvato; con i lettori con tastierino (pinpad) spunta l'opzione dedicata e digitalo sul lettore. Attenzione: più PIN errati consecutivi bloccano la scheda. Puoi usare la stessa finestra per firmare in un campo firma del modulo.
-
-- Il programma firma **con la chiave della tua scheda** (CNS, Firma Digitale su token, ecc.): la validità legale (firma qualificata/FEQ) dipende dal certificato emesso dal tuo prestatore, non dal programma.
-- La **Carta d'Identità Elettronica (CIE)** usa un proprio modulo e un PIN dedicato: funziona solo se espone un modulo PKCS#11 con certificato di firma sul tuo sistema. Non ho potuto provare schede reali: il funzionamento è stato verificato con un token virtuale SoftHSM.
-- La **firma remota** (OTP/app dei prestatori) non è supportata.
-
-## PDF/A e PDF/X
-
-**Come si usa.** *File → Conformità PDF/A e PDF/X…* verifica il documento e lo converte in un nuovo file; la stessa scelta è nella finestra *Salva con nome / Ottimizza* (dopo la compressione, come ultimo passo) e in *Firma → Firma digitale* (si converte e poi si firma: la firma resta valida e lo standard dichiarato rimane). Da terminale: `pdfdesk --compress in.pdf out.pdf --standard pdfa-2b` e `pdfdesk --check file.pdf [--standard pdfx-4]`.
-
-| Standard | Quando | Cosa fa la conversione |
-|---|---|---|
-| PDF/A-1b, 2b, 3b | archiviazione a lungo termine | font incorporati (anche i base-14), profilo sRGB, XMP, niente JavaScript/cifratura; in A-1b le trasparenze sono portate su sfondo bianco; A-3b ammette allegati |
-| PDF/X-1a, X-3, X-4 | file per la stampa | colori in CMYK con profilo di stampa (a scelta, altrimenti CMYK generico), TrimBox/BleedBox, ID e Trapped, font incorporati; X-1a e X-3 senza trasparenze, X-4 le conserva |
-
-Cosa succede al documento (è importante saperlo):
-- **Annotazioni e campi dei moduli sono appiattiti** nella pagina (diventano parte del contenuto, non più modificabili); i campi firma vuoti sono eliminati. Il **testo resta testo** (selezionabile, ricercabile, anche cirillico, greco, ecc.).
-- **Trasparenze** non ammesse dallo standard: evidenziazioni e opacità sono sostituite da colori pieni equivalenti su sfondo bianco; le immagini con trasparenza sono composte su bianco.
-- **Collegamenti ipertestuali**: mantenuti in PDF/A (pagine non ruotate); eliminati in PDF/X (le annotazioni stampabili sono vietate). Le pagine ruotate vengono riscritte già ruotate.
-- **Firme digitali**: la conversione le invaliderebbe, perciò è rifiutata per i documenti già firmati. Ordine giusto: modifica → comprimi → converti → firma.
-- **Livello «b»**: PDF/A-xb garantisce l'aspetto visivo identico nel tempo; i livelli «a» (accessibilità, struttura etichettata) e «u» non sono prodotti.
-- **PDF/X richiede il profilo del tuo stampatore**: senza, viene usato il CMYK generico di Ghostscript, valido per lo standard ma non adatto alla stampa professionale. Scegli il profilo ICC (es. FOGRA39, SWOP) nella finestra.
-
-**Verifica.** Per PDF/A il programma esegue un controllo interno e, se è installato **veraPDF** (variabile `PDFDESK_VERAPDF` o comando `verapdf`), lo usa come validatore indipendente; tutti i file prodotti dai test risultano conformi secondo veraPDF 1.30. Per PDF/X non esiste un validatore libero incluso: la verifica è solo interna (versione dichiarata, OutputIntent, riquadri, font, colori, trasparenze, annotazioni) e **non sostituisce il preflight dello stampatore**.
-
-La conversione usa **Ghostscript** (incluso nei pacchetti ufficiali; da sorgente va installato o indicato con `PDFDESK_GS`) e può richiedere alcuni secondi per documenti con molte immagini: l'interfaccia resta reattiva e mostra un indicatore. Vedi `THIRD_PARTY.md` per le licenze.
-
-## Interfaccia e Preferenze
-- Quattro barre — **Principale**, **Pagine**, **Strumenti**, **Proprietà** — con icone e tooltip su ogni controllo. Si spostano trascinando la maniglia e si agganciano in alto, in basso **o ai lati** della finestra (in verticale i controlli si dispongono in colonna); per impostazione predefinita stanno su una riga se la finestra è abbastanza larga, altrimenti su due.
-- Finché non è aperto un PDF, strumenti, inserimenti, firme, pagine, moduli, stampa ed esportazione sono disattivati (restano Apri, Nuovo, Preferenze, Informazioni).
-- **Ingrandimento**: menu a discesa nella barra Principale (e in Visualizza) con percentuali, «adatta alla larghezza/pagina» e «Altro…».
-- La barra **Pagine** ha navigazione (precedente/successiva/numero), rotazione, duplica, inserisci, estrai, elimina e il pannello Miniature.
-- **Modifica → Preferenze** (Ctrl+,): dimensione icone, testo sui pulsanti, righe delle barre, blocco barre, ingrandimento iniziale, miniature all'avvio, evidenziazione campi, file recenti.
-- **Inserisci**: menu con tutte le funzioni di inserimento della barra Strumenti (casella di testo, immagine, firme, forme, penne, evidenziazioni, redazione, pagine). **Strumenti**: selezione, modifica oggetti/testo, mano, copia testo, moduli, gomma.
-- **Annulla/Ripeti** ridisegna solo le pagine che cambiano (nessun lampo sull'intero foglio).
-- **Modifica oggetti** (tasto J): con il mouse si selezionano blocchi di testo, immagini e grafica vettoriale già presenti nel PDF; si spostano trascinando, si ridimensionano con le maniglie (le immagini mantengono le proporzioni; Maiusc per liberarle), si eliminano con Canc, il testo si riscrive con un doppio clic. Limiti: il testo riscritto usa un font standard simile all'originale; le immagini non si spostano sulle pagine ruotate; la grafica complessa va selezionata pezzo per pezzo. Le annotazioni (anche di altri programmi) si modificano con **Seleziona**.
-- **Griglia**: Preferenze → Griglia (e Visualizza) permette di mostrare una griglia con passo arbitrario (mm, cm, pollici o punti) e di agganciare ai suoi vertici lo spostamento e il ridimensionamento degli oggetti.
-- **Miniature**: lo zoom delle miniature segue automaticamente la larghezza della colonna.
-- **Annulla** vale per tutte le operazioni sugli oggetti, anche nei PDF firmati (le firme restano valide finché non si compie un'operazione permanente; in tal caso vengono scartate solo al salvataggio).
-- **Firme e modifiche permanenti**: se in un PDF firmato modifichi, sposti o elimini testo e oggetti (o applichi redazioni), al salvataggio puoi scegliere «Mantieni le firme» (salvataggio incrementale: la firma resta valida per la revisione originale, ma il contenuto precedente resta recuperabile nel file) oppure «Scarta le firme». Lo spostamento del testo conserva font, corpo e colore originali.
-- **Selezione del testo**: copia testo, evidenzia, sottolinea e barra selezionano a righe, dal punto iniziale al finale anche su più righe, come in un lettore PDF; tenendo premuto **Alt** si seleziona invece ad area (rettangolo). Preferenze → Selezione del testo sceglie la modalità predefinita.
-- **Immagini** (inserite o già presenti nel PDF): Modifica → *Proprietà immagine…* (o tasto destro) permette di impostare larghezza e altezza in modo numerico (pt, mm, cm, pollici, px), bloccare/sbloccare le proporzioni, ruotare (anche di un angolo qualsiasi, con ↺/↻ 90°), sostituire l'immagine ed esportarla come PNG, JPG o TIFF.
-- **Selezione multipla**: con *Seleziona* e *Modifica oggetti* si selezionano più oggetti trascinando un rettangolo sulla pagina oppure cliccando con **Ctrl** premuto (di nuovo Ctrl+clic per toglierli); si spostano insieme (un solo passo di annulla) e si eliminano o segnano per la redazione tutti insieme. *Raggruppa* (Ctrl+G) unisce gli oggetti selezionati in un gruppo che si seleziona e si sposta come un tutt'uno; *Separa il gruppo* (Ctrl+Maiusc+G) lo scioglie. Possono far parte di un gruppo annotazioni, forme, caselle di testo, firme-immagine e immagini del PDF (che diventano oggetti-immagine); testo e grafica vettoriale del PDF si possono selezionare e spostare insieme ma non raggruppare.
-- **Menu contestuale** (tasto destro): *Segna per la redazione* / *Annulla redazione* è un interruttore, come il clic con lo strumento Redazione.
-- **Carattere dell'interfaccia**: Preferenze → *Dimensioni dell'interfaccia* → *Dimensione* ingrandisce o rimpicciolisce (70–200 %) il testo di menu, barre, pannelli e finestre.
-- **Scala dell'interfaccia (HiDPI, Retina)**: sugli schermi ad alta densità il programma segue la scala del sistema (anche frazionaria: 125 %, 150 %…) con pagine, icone e cursori nitidi; Preferenze → *Scala dell'interfaccia* permette di forzare 100–300 % (si applica al riavvio; la variabile d'ambiente `QT_SCALE_FACTOR`, se impostata, ha la precedenza).
-- **Disegno della vista**: Preferenze → *Disegno della vista*: «Software» (predefinito, solo CPU, il più compatibile) oppure «OpenGL» (sperimentale: scorrimento e zoom sulla scheda grafica; se non disponibile si torna al software; si applica al riavvio; `PDFDESK_GL=0/1` forza la scelta). Direct3D e Metal non sono selezionabili: Qt li usa solo nei moduli grafici moderni (Qt Quick/QRhi), non nella vista a widget; su Windows e macOS «OpenGL» passa dal driver del sistema (su macOS, dallo strato OpenGL di Apple).
-- **Più processori, al bisogno**: l'esportazione in immagini (PNG/JPG/TIFF a pagine separate) o in testo e la ricerca nei documenti lunghi (≥ 200 pagine) usano fino a *n−1* processori (n = processori del computer) quando le pagine sono almeno 8, ciascuno su un gruppo di pagine; con poche pagine il lavoro resta su un solo processore. Preferenze → *Processori da usare* permette di fissare il massimo (o `PDFDESK_CORES=n`). I processi lavorano su una copia temporanea del documento, cancellata alla fine; se non si riescono ad avviare, il programma ripiega sul calcolo seriale. Il resto (interfaccia, disegno delle pagine, modifica del documento) resta su un solo processore, perché MuPDF non permette di usare lo stesso documento da più thread.
-- **Commenti**: lo strumento *Commento* inserisce una nota (icona a fumetto) cliccando sulla pagina; doppio clic per modificarla.
-- **Stili del testo**: nelle caselle di testo e nel testo riscritto sono disponibili grassetto, corsivo, sottolineato e barrato.
-- **Rotazione delle immagini con il mouse**: cliccando su un'immagine già selezionata si attiva la modalità rotazione (maniglie tonde); ESC riporta allo strumento *Seleziona*; un doppio clic su un oggetto passa allo strumento adatto.
-- **Lingua**: Preferenze → *Lingua* sceglie italiano o inglese (si applica al riavvio). Tutti i testi dell'interfaccia passano da `tr()` (modulo `pdfdesk/i18n.py`); il catalogo inglese è `pdfdesk/i18n_en.py`. Per aggiungere una lingua basta un catalogo analogo.
-- **Tema**: Preferenze → Tema (Come il sistema / Chiaro / Scuro). «Come il sistema» segue Windows, macOS e, su Linux, il portale/GNOME/KDE.
-- **Menu a tendina**: su Wayland i menu popup di Qt possono comparire staccati dalla barra; per questo, di default, su Wayland le tendine sono disegnate dentro la finestra (Preferenze → Menu a tendina: Automatico / Integrati / Standard di Qt). Con i menu integrati si naviga con il mouse e Esc chiude.
-- Il menu usa la barra dei menu della finestra (non quella nativa di sistema): le voci si aprono sotto il proprio titolo.
-
-## Uso rapido
-
-1. **Apri** un PDF (Ctrl+O o trascinalo nella finestra).
-2. Scegli uno strumento nella barra a sinistra (scorciatoie: V seleziona, P penna, E evidenziatore, R rettangolo, O ellisse, L linea, A freccia, X testo, M modifica testo, I immagine, F firma, D redazione, G gomma, K compila modulo).
-3. Con **Seleziona**: clic su un'annotazione per spostarla/ridimensionarla (Maiusc libera le proporzioni delle immagini), Canc per eliminarla, frecce per spostarla di 1 punto (Maiusc: 10).
-4. **Salva** (Ctrl+S) o **Salva con nome / Ottimizza** (Ctrl+Maiusc+S) per scegliere qualità e compressione.
-
-Da terminale: `pdfdesk --version`, `pdfdesk --compress in.pdf out.pdf --preset medium`, `pdfdesk --verify file.pdf`, `pdfdesk --selftest`.
-
-## Limiti noti
-
-- **Redazione e modifiche permanenti**: l'applicazione elimina davvero dal file testo, immagini e grafica sotto le aree, oltre a note/commenti e campi compilati sovrapposti e all'anteprima incorporata della pagina (verificato con scansione di tutti gli oggetti e i flussi del file salvato, anche sui PDF firmati, che vengono riscritti per intero: le firme sono rimosse perché un salvataggio incrementale conserverebbe la revisione originale). Prima di sovrascrivere il file originale con modifiche irreversibili compare un avviso che consiglia «Salva con nome». I metadati (titolo, autore…), i segnalibri e gli allegati non vengono modificati: per i metadati usa «Salva con nome» → rimuovi metadati.
-
-- **Esporta in DOCX/ODT**: la struttura è ricostruita dal contenuto del PDF (ordine di lettura, dimensione del testo per riconoscere i titoli, linee per le tabelle): l'impaginazione esatta, le colonne multiple, le tabelle senza bordi e i PDF scansionati (senza testo) non sono riprodotti fedelmente; per le scansioni usa l'esportazione in immagini.
-- **Stampa**: le pagine sono stampate come immagini (fino a 300 dpi), con annotazioni e campi del modulo visibili.
-
-- **Firma remota** (OTP, app del prestatore) non supportata; le smart card sono supportate via PKCS#11 ma provate solo con un token virtuale, non con schede fisiche.
-- **Modifica testo**: riscrive il blocco con carattere standard (Helvetica/Times/Courier, scelto in base all'originale) e non fa il reflow del resto della pagina; in «Modifica testo» per i caratteri fuori dal latino scegli un font TTF/OTF che li contenga.
-- Il colore del testo di una casella è anche il colore del suo bordo (limite del formato PDF per le annotazioni di testo).
-- Moduli **XFA** non supportati (solo AcroForm). I font TTF/OTF delle caselle non sono incorporati per intero (vedi sopra).
-- Le immagini inserite sono annotazioni (spostabili/eliminabili); le immagini già presenti nel PDF non sono modificabili singolarmente (si possono oscurare con la redazione).
-- PDF/A e PDF/X: vedi la sezione dedicata (annotazioni appiattite, livello «b», PDF/X validato solo internamente).
-- Annulla/ripeti conserva copie dello stato (limite ~400 MB): con PDF molto grandi la cronologia si accorcia.
-- Gli eseguibili Windows sono firmati con un certificato **autofirmato** (non di un'autorità pubblica): per non vedere l'avviso di SmartScreen/«editore sconosciuto» va installato il certificato `pdfdesk-sign.cer` (lo fa l'installatore, vedi sotto). La build macOS non è firmata né notarizzata: al primo avvio si esegue `sblocca.sh`.
-
-## Installazione e aggiornamento
-
-**Windows** — esegui `pdfdesk-<versione>-windows-x86_64-setup.exe` (richiede i diritti di amministratore).
-L'installatore copia il programma in `C:\Program Files\PDFDesk`, crea la voce nel menu Start (e, a scelta, il collegamento sul desktop e la voce «Apri con» per i PDF) e si registra in *App e funzionalità*.
-Se è già installata una versione precedente, rileva la cartella esistente e **aggiorna sul posto**; se il programma è aperto chiede di chiuderlo; se la versione installata è uguale o più recente chiede conferma. Le impostazioni e le firme salvate dell'utente non vengono toccate, neppure disinstallando. Installazione silenziosa: `setup.exe /S` (opzionale `/D=C:\percorso`; con `/CERT` installa anche il certificato).
-L'eseguibile e l'installatore sono **firmati** con il certificato autofirmato «PDFDesk - Guido Cauli» (`pdfdesk-sign.cer`, impronta SHA-256 `9A:26:92:17:2A:EF:24:83:C1:00:CD:31:A2:90:F8:94:75:97:39:C3:C4:11:4B:C0:28:26:85:60:01:C9:F6:2D`). Nella pagina dei componenti, **«Certificato dell'editore»** lo aggiunge alle autorità e agli editori attendibili del computer, così Windows riconosce la firma; fidati solo se hai scaricato il programma da una fonte sicura. La disinstallazione lo rimuove. Con lo zip portatile: clic destro su `installa-certificato.cmd` → *Esegui come amministratore*. Nota: un certificato autofirmato non sostituisce quello di un'autorità pubblica; SmartScreen basa parte del giudizio sulla reputazione del file.
-In alternativa lo zip contiene il solo `pdfdesk.exe`, eseguibile senza installazione.
-
-**Linux** — estrai il `tar.gz`, poi:
-
-```
-./install.sh              # per l'utente corrente (~/.local), senza privilegi
+```bash
+mkdir pdfdesk && tar xzf pdfdesk-<versione>-linux-x86_64.tar.gz -C pdfdesk
+cd pdfdesk
+./install.sh                 # per l'utente corrente (~/.local)
 sudo ./install.sh --system   # per tutti gli utenti (/opt/pdfdesk)
 ```
 
-Lo script installa l'eseguibile, il file `pdfdesk.desktop` (voce nel menu applicazioni, associazione ai PDF) e le icone in tutte le dimensioni. **Per aggiornare** basta lanciare `install.sh` del pacchetto nuovo: sostituisce la versione precedente (anche se il programma è aperto) e mostra «dalla versione X alla Y». Per rimuoverlo: `~/.local/share/pdfdesk/uninstall.sh` (o `sudo /opt/pdfdesk/uninstall.sh --system`).
+Lo script aggiunge la voce nel menu delle applicazioni, l'associazione ai PDF e le icone. Per aggiornare si lancia `install.sh` del pacchetto nuovo. Per rimuovere: `~/.local/share/pdfdesk/uninstall.sh` (oppure `sudo /opt/pdfdesk/uninstall.sh --system`).
 
-**macOS** — apri lo zip e trascina `PDFDesk.app` in *Applicazioni*; per aggiornare sostituisci l'app. Le build macOS non sono firmate né notarizzate: al primo avvio macOS può dichiararla «danneggiata». Apri il Terminale ed esegui `sh sblocca.sh` (il file è nello zip, accanto all'app; se l'app è già in Applicazioni: `sh sblocca.sh /Applications/PDFDesk.app`). Lo script esegue `xattr -cr PDFDesk.app`, che toglie l'attributo di quarantena; si fa una volta sola per ogni nuova versione scaricata. In alternativa: clic destro → *Apri*.
+Librerie di sistema richieste da Qt (di solito già presenti in un desktop):
 
-**Verifica aggiornamenti** — menu *Aiuto → Verifica aggiornamenti…* confronta la versione in uso con l'ultima release su GitHub (solo su richiesta, nessun dato inviato) e apre la pagina di download.
+| Distribuzione | Pacchetti |
+|---|---|
+| Debian / Ubuntu | `libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1 libxcb-cursor0` |
+| Fedora / RedHat | `mesa-libEGL mesa-libGL libxkbcommon dbus-libs fontconfig xcb-util-cursor` |
+| Arch | `libglvnd libxkbcommon dbus fontconfig xcb-util-cursor` |
 
-## Compilare
+### macOS
 
-```bash
-./build.sh            # Linux / macOS: test + eseguibile + selftest + pacchetto in dist/
-build.bat             # Windows
-```
+1. Apri lo zip e trascina `PDFDesk.app` in *Applicazioni*.
+2. Al primo avvio macOS può segnalare l'app come «danneggiata», perché non è firmata da Apple. Nel Terminale esegui lo script incluso nello zip:
+   ```bash
+   sh sblocca.sh /Applications/PDFDesk.app
+   ```
+   Lo script toglie l'attributo di quarantena (`xattr -cr`). Va ripetuto a ogni nuova versione.
 
-GitHub Actions (`.github/workflows/build.yml`, avvio manuale o tag `v*`) compila **solo macOS Apple Silicon**; Windows e Linux si compilano sul computer di sviluppo (`build_windows_wine.sh`, `build.sh`) e le Release si pubblicano a mano con quei pacchetti più lo zip macOS prodotto da Actions. In alternativa, per macOS, `./build.sh` su un Mac (o `build_macos_remote.sh`). **Mac Intel**: non compilato con Actions né con il lock attuale, perché `cryptography` 50 non ha più pacchetti per macOS x86_64 (l'ultima versione con pacchetti Intel è la 48.x). Firma Windows: `./sign_windows.sh ENTRATA.exe USCITA.exe` firma un eseguibile già compilato con la chiave `packaging/signing/pdfdesk-sign.key` (privata, fuori dal repository; serve `osslsigncode`); `build_installer.sh` la usa da solo. Per compilare serve **Ghostscript** installato (viene incluso nel pacchetto): `apt install ghostscript fonts-urw-base35`, `brew install ghostscript`, oppure l'installer da ghostscript.com (Windows). Su Linux servono le librerie di sistema di Qt: Debian/Ubuntu `libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1 libxcb-cursor0`; Fedora/RedHat `mesa-libEGL mesa-libGL libxkbcommon dbus-libs fontconfig xcb-util-cursor`; Arch `libglvnd libxkbcommon dbus fontconfig xcb-util-cursor`.
+Per aggiornare si sostituisce l'app.
 
-I pacchetti hanno il numero di versione nel nome: `pdfdesk-<versione>-linux-<arch>.tar.gz`, `pdfdesk-<versione>-windows-x86_64.zip`, `pdfdesk-<versione>-macos-<arch>.zip`, `pdfdesk-<versione>-sorgenti.tar.gz` (`./make_sources.sh`). La versione si legge da `pdfdesk/__init__.py`.
+### Aggiornamenti
 
-Esecuzione da sorgente: `pip install -r requirements.txt && python run_pdfdesk.py [file.pdf]`.
+*Aiuto → Verifica aggiornamenti…* confronta la versione in uso con l'ultima release su GitHub. Il controllo avviene solo su richiesta e non invia dati.
 
-**Ambiente di compilazione uniforme.** Gli eseguibili si compilano tutti con **Python 3.11** e con le versioni *esatte* dei moduli elencate in `requirements.lock` (Windows, Linux e macOS identici; Python 3.11 perché Wine, che compila Windows da Linux, non supporta 3.12+). `build.sh`, `build.bat`, `build_windows_wine.sh` e il workflow installano il lock e lanciano `check_build_env.py`, che **blocca la build** se Python o un modulo differisce. Su Mac: `brew install python@3.11` (o python.org 3.11) e `PYTHON=python3.11 ./build.sh`. Nota: la versione di *patch* di Python (3.11.x) può variare da un sistema all'altro, il controllo vincola 3.11 e le librerie. Il sorgente va mantenuto compatibile con Python 3.11 (niente f-string con apici o barre rovesciate annidati: è l'errore che aveva escluso `export_fixed` dall'exe Windows).
+---
 
-### Installatore Windows
+## Funzioni
 
-`./build_installer.sh` (richiede `makensis`, pacchetto `nsis`) crea `dist/pdfdesk-<versione>-windows-x86_64-setup.exe` a partire da `dist-wine/pdfdesk.exe` o `dist/pdfdesk.exe`; lo script NSIS è in `packaging/windows/pdfdesk.nsi`. Le icone si rigenerano con `python packaging/make_icons.py` (cartella `packaging/assets/`).
+### Visualizzazione
+- Più PDF aperti insieme, uno per scheda; ogni scheda ricorda zoom, posizione e cronologia di annulla.
+- Scorrimento continuo, zoom (Ctrl+rotella, adatta alla larghezza o alla pagina), miniature, ricerca nel testo (Ctrl+F).
+- PDF protetti da password, apertura con trascina e rilascia.
 
-### Compilare Windows e macOS da questo computer
-PyInstaller non fa cross-compilazione: ogni eseguibile va costruito con le librerie della propria piattaforma. Gli script qui sotto automatizzano i tre percorsi possibili (nessuno di essi è stato provato dall'autore sul proprio ambiente: vedi le note).
+### Annotazioni e disegno
+- Penna, evidenziatore, linee, frecce, rettangoli ed ellissi, con colore, spessore e opacità.
+- Evidenziare, sottolineare e barrare il testo, selezionando per righe (come in un lettore PDF) oppure ad area tenendo premuto **Alt**.
+- **Caselle di testo** con carattere, dimensione, colore, sfondo e stile (grassetto, corsivo, sottolineato, barrato).
+- **Commenti**: note standard del PDF, leggibili in qualsiasi lettore.
+- **Font TTF/OTF**: si usano i font del sistema o si aggiungono i propri file `.ttf`/`.otf`; supportano accenti, €, greco, cirillico e ogni carattere presente nel font.
 
-| Obiettivo | Da dove | Comando |
+### Testo, immagini e oggetti del PDF
+- **Modifica testo**: riscrive un blocco di testo esistente (il testo originale viene rimosso dal file).
+- **Modifica oggetti**: sposta, ridimensiona ed elimina testo, immagini e grafica già presenti nel PDF.
+- **Immagini**: inserimento da file (anche PNG trasparenti), dimensioni numeriche, rotazione libera o a 90°, sostituzione ed esportazione. Un clic su un'immagine selezionata attiva la rotazione con il mouse (Maiusc = scatti di 15°).
+- **Selezione multipla** (rettangolo o Ctrl+clic) e **gruppi** (Ctrl+G / Ctrl+Maiusc+G).
+- **Griglia** con passo a scelta (mm, cm, pollici, punti) e aggancio degli oggetti.
+- **Redazione**: oscura in modo permanente testo, immagini e grafica di un'area o di un singolo oggetto; può rimuovere anche i metadati.
+- Annulla e ripeti per tutte le operazioni.
+
+### Pagine
+- Riordino trascinando le miniature, rotazione, duplicazione, eliminazione.
+- Inserimento di pagine vuote o da un altro PDF, estrazione in un nuovo PDF.
+- **Unisci PDF**: unisce PDF e immagini in un unico file, con scelta delle pagine di ogni sorgente e un segnalibro per ogni file.
+
+### Moduli
+- Compilazione dei moduli **AcroForm**: testo, multiriga, caselle, opzioni, menu e liste, campi firma.
+- **Appiattisci**: rende fisso il contenuto dei campi.
+
+### Firme
+- **Firma olografica**: disegnata con mouse o penna, oppure importata da una foto con lo sfondo reso trasparente; resta in una libreria personale.
+- **Firma digitale** PAdES con certificato `.p12`/`.pfx` o **smart card / token USB** (PKCS#11). Dettagli in [Firme digitali](#firme-digitali).
+
+### Esportazione, stampa e salvataggio
+- **Esporta** in PNG, JPG, TIFF (anche multipagina), testo semplice, **DOCX** e **ODT**, con titoli, paragrafi, tabelle e immagini ricostruiti.
+- **Stampa** su qualsiasi stampante di sistema o su file PDF.
+- **Salva con nome / Ottimizza**: qualità predefinite (*Originale*, *Alta* 300 dpi, *Media* 150, *Bassa* 96, *Minima* 72) o personalizzate, scala di grigi, rimozione dei metadati, riduzione dei font, con stima della dimensione finale. Il testo resta sempre testo selezionabile: la compressione agisce solo su immagini e struttura del file.
+- **Metadati** (Ctrl+D): campi standard e personalizzati, XMP.
+- **Estrai immagini**: tutte le immagini incorporate, oppure un'area della pagina in PNG, JPG o TIFF o negli appunti.
+
+---
+
+## Firme digitali
+
+**Formati.** Firma PAdES con marca temporale RFC 3161 facoltativa e riquadro visibile facoltativo con la firma-immagine. Si può firmare anche dentro i campi firma dei moduli.
+
+**Smart card e token.** In *Firma → Firma digitale* scegli «Smart card / token USB». Il programma cerca da solo i moduli PKCS#11 più comuni (OpenSC, Bit4id, Aruba Key, InfoCamere/Incard, SafeNet…); premi *Rileva* e scegli il certificato. Sono supportati i lettori con tastierino (pinpad). Il PIN non viene mai salvato.
+
+> Più PIN errati consecutivi bloccano la scheda.
+
+**Validità legale.** Il valore legale della firma (firma qualificata) dipende dal certificato emesso dal prestatore, non dal programma. I certificati autofirmati, che si creano da *Firma → Crea certificato autofirmato*, garantiscono l'integrità del documento, ma i lettori PDF li segnalano come «non attendibili».
+
+**Firme e modifiche.**
+
+| Situazione | Comportamento |
+|---|---|
+| Comprimere e firmare | *Firma → Firma digitale* comprime prima e firma dopo: il file finale è valido |
+| Annotare un PDF già firmato | le modifiche si aggiungono come revisione successiva e le firme restano valide |
+| Più firme | si aggiungono in sequenza senza invalidare le precedenti |
+| Modifiche permanenti su un PDF firmato (testo, oggetti, redazioni) | al salvataggio si sceglie «Mantieni le firme» (salvataggio incrementale) o «Scarta le firme» |
+| Comprimere un PDF già firmato | le firme verrebbero invalidate: il programma chiede conferma e rimuove i campi firma |
+
+**Verifica firme.** Per ogni firma mostra esito, integrità, copertura, modifiche successive, data e marca temporale, algoritmi e tutti i dati dei certificati.
+
+---
+
+## PDF/A e PDF/X
+
+*File → Conformità PDF/A e PDF/X…* verifica un documento e lo converte in un nuovo file. La stessa scelta è presente in *Salva con nome* e in *Firma digitale*, dove il documento viene prima convertito e poi firmato.
+
+| Standard | Uso | Conversione |
 |---|---|---|
-| Linux | Linux | `./build.sh` |
-| Windows | Windows (anche una VM) | `build.bat` |
-| Windows | Linux con Docker (Wine + Python per Windows) | `./build_windows_wine.sh [--with-tests]` |
-| macOS | un Mac | `./build.sh` (serve `brew install ghostscript`) |
-| macOS | Linux, con un Mac raggiungibile via SSH | `MAC_HOST=utente@mac.lan ./build_macos_remote.sh` |
-| tutto il possibile | Linux | `MAC_HOST=… ./build_all.sh` |
+| PDF/A-1b, 2b, 3b | archiviazione a lungo termine | font incorporati, profilo sRGB, metadati XMP, niente JavaScript né cifratura; A-3b ammette allegati |
+| PDF/X-1a, X-3, X-4 | stampa | colori CMYK con il profilo di stampa scelto, riquadri di rifilo e abbondanza; X-4 conserva le trasparenze |
 
-- La compilazione sotto Wine produce un vero `pdfdesk.exe` (Python 3.11: Wine 9 non supporta `CopyFile2` di Python 3.12). Sotto Wine si può provare la parte non grafica (conversione PDF/A con Ghostscript incluso); la finestra no, perché Qt richiede `icuuc.dll` di Windows. Prova sempre l'eseguibile su Windows reale prima di distribuirlo.
-- macOS richiede macOS: le licenze Apple consentono le VM macOS solo su hardware Apple, quindi non è prevista una compilazione su un hypervisor generico.
+Effetti della conversione sul documento:
+- annotazioni e campi dei moduli diventano parte della pagina e non sono più modificabili; il testo resta selezionabile e ricercabile;
+- le trasparenze non ammesse dallo standard diventano colori pieni equivalenti;
+- i collegamenti restano nei PDF/A e vengono rimossi nei PDF/X;
+- i documenti già firmati non si convertono, perché la conversione invaliderebbe la firma. L'ordine corretto è modifica → comprimi → converti → firma.
 
-## Test
+Per PDF/X va scelto il **profilo ICC dello stampatore** (per esempio FOGRA39 o SWOP); senza, si usa un profilo CMYK generico.
+
+Un file che dichiara uno standard viene riconosciuto all'apertura. Se lo modifichi, al salvataggio puoi ripristinarne la conformità.
+
+**Verifica.** PDF/A si verifica con il controllo interno e, se installato, con **veraPDF** (comando `verapdf` o variabile `PDFDESK_VERAPDF`). PDF/X si verifica con il solo controllo interno, che non sostituisce il preflight dello stampatore.
+
+---
+
+## Scansione e OCR
+
+*File → Crea PDF da scansione…* acquisisce dallo scanner:
+
+| Sistema | Driver |
+|---|---|
+| Windows | WIA (già incluso in Windows) |
+| Linux | SANE: `sane-utils` (Debian/Ubuntu), `sane` (Fedora, Arch) |
+| macOS | SANE: `brew install sane-backends` |
+
+Si scelgono scanner, piano o alimentatore automatico, colore/grigi/bianco e nero, risoluzione e formato. Le pagine si riordinano, ruotano ed eliminano prima di creare il PDF. Senza scanner si possono comunque importare immagini già salvate.
+
+**OCR (testo ricercabile)** con [Tesseract](https://github.com/tesseract-ocr/tesseract):
+
+| Sistema | Installazione |
+|---|---|
+| Windows | componente «OCR» dell'installatore, oppure pulsante **Scarica OCR…** nella finestra di scansione |
+| Debian / Ubuntu | `sudo apt install tesseract-ocr tesseract-ocr-ita` |
+| Fedora / RedHat | `sudo dnf install tesseract tesseract-langpack-ita` |
+| Arch | `sudo pacman -S tesseract tesseract-data-ita` |
+| macOS | `brew install tesseract tesseract-lang` |
+
+Tesseract viene trovato automaticamente: nel PATH, in `C:\Program Files\Tesseract-OCR`, nella cartella di PDFDesk e nel profilo utente. Non serve modificare il PATH. Un percorso diverso si indica in *Preferenze → Scansione e OCR*.
+
+---
+
+## Interfaccia e preferenze
+
+- Quattro barre (**Principale**, **Pagine**, **Strumenti**, **Proprietà**) da agganciare in alto, in basso o ai lati della finestra.
+- **Esc** torna allo strumento Seleziona. Un doppio clic su un oggetto passa allo strumento adatto a modificarlo.
+- Menu contestuale (tasto destro) con le azioni disponibili per l'oggetto sotto il cursore.
+
+*Modifica → Preferenze* (Ctrl+,) è organizzata per sezioni:
+
+| Sezione | Contenuto |
+|---|---|
+| Generale | lingua (italiano, inglese), numero di file recenti |
+| Aspetto | tema (sistema, chiaro, scuro), menu a tendina, dimensione del testo (70–200 %), scala per schermi HiDPI/Retina (100–300 %) |
+| Barre degli strumenti | icone, testo sui pulsanti, disposizione, blocco |
+| Visualizzazione | ingrandimento iniziale, miniature, evidenziazione dei campi, griglia, selezione del testo |
+| Prestazioni | disegno della vista (Software o OpenGL), numero di processori |
+| Scansione e OCR | percorso di Tesseract |
+
+**Prestazioni.** L'esportazione in immagini o testo e la ricerca nei documenti lunghi usano più processori, fino a *n − 1*. La vista OpenGL è sperimentale; se la scheda grafica non la supporta, il programma torna al disegno software.
+
+**Scorciatoie degli strumenti:** V seleziona · J modifica oggetti · M modifica testo · X casella di testo · C commento · P penna · E evidenziatore · R rettangolo · O ellisse · L linea · A freccia · I immagine · F firma · D redazione · G gomma · K compila modulo.
+
+---
+
+## Riga di comando
 
 ```bash
-QT_QPA_PLATFORM=offscreen python -I -W ignore tests/test_core.py   # annotazioni, redazione, compressione, firme, CLI
-QT_QPA_PLATFORM=offscreen python -I -W ignore tests/test_gui.py    # interfaccia con mouse simulato
-QT_QPA_PLATFORM=offscreen python -I -W ignore tests/test_features.py  # font TTF/OTF, moduli, smart card (con SoftHSM, se installato)
-QT_QPA_PLATFORM=offscreen python -I -W ignore tests/test_standards.py  # PDF/A e PDF/X (richiede Ghostscript; veraPDF opzionale)
+pdfdesk a.pdf b.pdf                                         # apre i file in schede
+pdfdesk --compress in.pdf out.pdf --preset medium           # comprime
+pdfdesk --compress in.pdf out.pdf --standard pdfa-2b        # converte in PDF/A-2b
+pdfdesk --check file.pdf [--standard pdfx-4]                # verifica la conformità
+pdfdesk --verify file.pdf                                   # verifica le firme digitali
+pdfdesk --merge uscita.pdf a.pdf b.pdf scansione.png        # unisce PDF e immagini
+pdfdesk --selftest                                          # autotest del programma
+pdfdesk --version
 ```
+
+---
+
+## Funzioni non supportate e limiti
+
+**Non ancora supportate**
+- Moduli **XFA** (alcuni moduli dinamici di Adobe): si vede la pagina di ripiego. Sono supportati i moduli AcroForm.
+- **Firma remota** (OTP o app del prestatore).
+- **Carta d'Identità Elettronica (CIE)** per la firma, salvo che il sistema metta a disposizione un modulo PKCS#11 con il certificato di firma.
+- PDF/A di livello **«a»** (accessibile) e **«u»**: si producono i livelli «b».
+- Driver di scansione nativo per macOS (ImageCaptureCore): si usa SANE oppure si importano le immagini.
+- **macOS Intel**: si distribuisce solo la versione Apple Silicon.
+- Direct3D e Metal per la vista (disponibili Software e OpenGL).
+
+**Limiti**
+- **Modifica testo** usa un carattere standard simile all'originale (Helvetica, Times o Courier) e non ridistribuisce il resto della pagina. Per i caratteri non latini serve un font TTF/OTF che li contenga.
+- **Font TTF/OTF** nelle caselle di testo: l'aspetto salvato è identico in qualsiasi lettore, ma per *modificare* la casella su un altro computer serve lo stesso font. Grassetto e corsivo non sono disponibili con questi font.
+- Il colore del testo di una casella è anche il colore del suo bordo (limite del formato PDF).
+- **Esportazione DOCX/ODT**: impaginazione esatta, colonne multiple e tabelle senza bordi non sono riprodotte fedelmente. Per i PDF scansionati conviene esportare in immagini.
+- La **stampa** invia le pagine come immagini (fino a 300 dpi).
+- La **redazione** non modifica segnalibri e allegati. I metadati si rimuovono con l'opzione dedicata.
+- **Annulla** conserva fino a circa 400 MB di stati: con PDF molto grandi la cronologia è più corta.
+- In **Modifica oggetti** le immagini non si spostano sulle pagine ruotate e la grafica complessa si seleziona pezzo per pezzo.
+- **Appiattisci** trasforma in contenuto fisso anche i campi firma vuoti. Nei file firmati è disattivato.
+- Le build Windows usano un certificato autofirmato e quelle macOS non sono notarizzate da Apple (vedi [Download e installazione](#download-e-installazione)).
+
+---
+
+## Compilare dai sorgenti
+
+Esecuzione diretta dai sorgenti (Python 3.11):
+
+```bash
+pip install -r requirements.lock
+python run_pdfdesk.py [file.pdf]
+```
+
+Per creare gli eseguibili:
+
+```bash
+./build.sh      # Linux e macOS: test, eseguibile, autotest e pacchetto in dist/
+build.bat       # Windows
+```
+
+Tutte le piattaforme si compilano con **Python 3.11** e con le versioni esatte dei moduli in `requirements.lock`; `check_build_env.py` blocca la compilazione se qualcosa non corrisponde. Serve **Ghostscript**, che viene incluso nel pacchetto.
+
+Compilazione per Windows da Linux (Wine), installatore, firma degli eseguibili, macOS via SSH o GitHub Actions e test sono descritti in [COMPILARE.md](COMPILARE.md).
+
+---
 
 ## Licenza
 
-AGPL-3.0-or-later (vedi `LICENSE`), perché usa PyMuPDF (AGPL). Altri componenti: Qt/PySide6 (LGPL), pyHanko (MIT), cryptography (Apache/BSD).
+**AGPL-3.0-or-later** (vedi [LICENSE](LICENSE)), perché il programma usa PyMuPDF (AGPL). Componenti principali: Qt/PySide6 (LGPL), pyHanko (MIT), cryptography (Apache/BSD), Ghostscript (AGPL). Elenco completo in [THIRD_PARTY.md](THIRD_PARTY.md).
 
-— PDFDesk, Guido Cauli <guido.cauli@gmail.com>
+PDFDesk — Guido Cauli <guido.cauli@gmail.com>
