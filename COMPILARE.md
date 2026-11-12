@@ -6,7 +6,9 @@
 
 Tutti gli eseguibili si compilano con **Python 3.11** e con le versioni esatte dei moduli in `requirements.lock`, in modo identico su Windows, Linux e macOS. Python 3.11 è necessario perché Wine, usato per compilare Windows da Linux, non supporta Python 3.12 e successivi.
 
-`build.sh`, `build.bat` e `build_windows_wine.sh` installano il lock (con `--no-deps`: il lock è completo, così non entrano pacchetti in più come NumPy, che la traduzione non usa e che sotto Wine non si carica) e lanciano `check_build_env.py`, che blocca la compilazione se Python o un modulo non corrispondono. La versione di patch di Python (3.11.x) può variare.
+`build.sh`, `build.bat` e `build_windows_wine.sh` installano il lock (con `--no-deps`: il lock è completo, così non entrano pacchetti in più, come i moduli di analisi del layout di PyMuPDF che il programma non usa) e lanciano `check_build_env.py`, che blocca la compilazione se Python o un modulo non corrispondono. La versione di patch di Python (3.11.x) può variare.
+
+NumPy è fissato alla 1.26.4: serve a PyMuPDF per riconoscere le tabelle, e le versioni 2.x non si caricano sotto Wine.
 
 Il sorgente deve restare compatibile con Python 3.11: per esempio, niente f-string con apici dello stesso tipo o barre rovesciate dentro le espressioni.
 

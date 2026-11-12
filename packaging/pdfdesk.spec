@@ -6,14 +6,14 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files, coll
 hidden = collect_submodules("pdfdesk") + collect_submodules("pyhanko") + collect_submodules("pyhanko_certvalidator") + collect_submodules("pkcs11") + ["PIL.Image", "fontTools.subset", "aiohttp", "asn1crypto"]
 datas = collect_data_files("pyhanko") + collect_data_files("pyhanko_certvalidator")
 # traduzione: CTranslate2 (librerie native), sentencepiece, langdetect (profili delle lingue). NumPy non serve per tradurre
-# e su Wine non si carica: viene escluso.
+# ma serve a PyMuPDF per riconoscere le tabelle (find_tables): si include NumPy 1.26 (il 2.x non si carica sotto Wine).
 hidden += ["ctranslate2", "sentencepiece", "langdetect"] + collect_submodules("langdetect")
 datas += collect_data_files("langdetect")
 trans_bins = collect_dynamic_libs("ctranslate2")
 excludes = ["tkinter", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.QtQml", "PySide6.QtQuick",
             "PySide6.Qt3DCore", "PySide6.QtMultimedia", "PySide6.QtSql", "PySide6.QtTest", "PySide6.QtNetwork",
             # componenti non usati (modelli di analisi layout, calcolo scientifico, ecc.): pesano decine di MB
-            "numpy", "scipy", "lxml", "pydantic", "pydantic_core", "onnxruntime", "pymupdf4llm", "pymupdf_layout",
+            "scipy", "lxml", "pydantic", "pydantic_core", "onnxruntime", "pymupdf4llm", "pymupdf_layout",
             "pymupdf.layout", "pandas", "matplotlib", "IPython", "pkg_resources", "setuptools", "pytest"]
 DROP = ("onnx", "pymupdf/layout", "qgtk3", "libgtk", "libgdk", "libcairo", "libpango", "libatk", "libharfbuzz-icu")
 

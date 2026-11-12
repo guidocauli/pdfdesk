@@ -140,9 +140,12 @@ def run() -> int:
         w = MainWindow(path)
         w.resize(1100, 760)
         w.show()
-        loop = QEventLoop()
-        QTimer.singleShot(500, loop.quit)
-        loop.exec()
+        for _ in range(20):                       # fino a 5 s: le macchine lente (es. CI) disegnano più tardi
+            loop = QEventLoop()
+            QTimer.singleShot(250, loop.quit)
+            loop.exec()
+            if w.pdf and w.view.page_items and not w.view.page_items[0][1].pixmap().isNull():
+                break
         assert w.pdf and w.pdf.is_signed
         _, pix, rs, _ = w.view.page_items[0]
         assert not pix.pixmap().isNull(), "pagina non disegnata"
@@ -177,6 +180,14 @@ def run() -> int:
 
     def exports():
         from . import export
+        # PyMuPDF riconosce le tabelle solo con NumPy: senza, DOCX e ODT perdono le tabelle senza errori evidenti
+        tdoc = fitz.open(); tp = tdoc.new_page()
+        for i in range(3):
+            for j in range(3):
+                r = fitz.Rect(50 + j * 100, 50 + i * 20, 150 + j * 100, 70 + i * 20); tp.draw_rect(r); tp.insert_text((r.x0 + 3, r.y0 + 14), f"c{i}{j}")
+        tabs = tp.find_tables()
+        assert tabs is not None and len(tabs.tables) == 1, "riconoscimento delle tabelle non disponibile (NumPy assente?)"
+        tdoc.close()
         d = fitz.open(src)
         done = []
         for fmt, ext in (("txt", "txt"), ("docx", "docx"), ("odt", "odt")):
@@ -185,7 +196,7 @@ def run() -> int:
             assert os.path.getsize(out) > 20, f"esportazione {fmt} vuota"
             done.append(fmt.upper())
         d.close()
-        return ", ".join(done)
+        return ", ".join(done) + ", tabelle riconosciute"
 
     def modules():
         import importlib.util
