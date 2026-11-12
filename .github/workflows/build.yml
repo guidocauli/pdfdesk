@@ -26,7 +26,7 @@ jobs:
         continue-on-error: true            # un test fallito non blocca la compilazione: lo segnala (::error::)
         env: { QT_QPA_PLATFORM: offscreen }
         run: |
-          for t in core gui features standards newfeatures mergescan; do python -I -W ignore tests/test_$t.py || echo "::error::test_$t non superato"; done
+          for t in core gui features standards newfeatures mergescan translate; do python -I -W ignore tests/test_$t.py || echo "::error::test_$t non superato"; done
       - name: Compila
         working-directory: packaging
         run: python -m PyInstaller --noconfirm --clean --distpath ../dist --workpath ../build pdfdesk.spec

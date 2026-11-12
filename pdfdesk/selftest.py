@@ -185,7 +185,7 @@ def run() -> int:
         for i in range(3):
             for j in range(3):
                 r = fitz.Rect(50 + j * 100, 50 + i * 20, 150 + j * 100, 70 + i * 20); tp.draw_rect(r); tp.insert_text((r.x0 + 3, r.y0 + 14), f"c{i}{j}")
-        tabs = tp.find_tables()
+        tabs = tp.find_tables(use_layout=False)
         assert tabs is not None and len(tabs.tables) == 1, "riconoscimento delle tabelle non disponibile (NumPy assente?)"
         tdoc.close()
         d = fitz.open(src)

@@ -18,6 +18,13 @@ from xml.sax.saxutils import escape, quoteattr
 
 import pymupdf as fitz
 
+# Analisi del layout di PyMuPDF (pymupdf.layout + onnxruntime): non inclusa nel programma. Disattivata ovunque, così
+# il riconoscimento delle tabelle (che richiede NumPy) funziona allo stesso modo dai sorgenti e negli eseguibili.
+try:
+    fitz._layout_enabled = False
+except Exception:
+    pass
+
 from . import parallel
 
 Progress = Optional[Callable[[int, int], bool]]       # (fatte, totali) -> False per annullare
@@ -290,7 +297,7 @@ def extract_layout(doc: fitz.Document, pages: list[int], progress: Progress = No
         d = page.get_text("dict", sort=True)
         tables = []
         try:
-            for t in page.find_tables().tables:
+            for t in page.find_tables(use_layout=False).tables:
                 rows = t.extract()
                 if rows and len(rows) >= 1 and len(rows[0]) >= 2:
                     tables.append((fitz.Rect(t.bbox), [[_clean((c or "").replace("\n", " ")).strip() for c in r] for r in rows]))
