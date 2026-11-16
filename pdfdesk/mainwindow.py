@@ -404,9 +404,58 @@ class MainWindow(QMainWindow):
         for a in (self.a_sigdig, self.a_verify, self.a_cert):
             m.addAction(a)
         m = mb.addMenu(tr("&Aiuto"))
+        m.addAction(tr("&Registro degli errori…"), self.show_error_log)
         m.addAction(self.a_update)
         m.addAction(self.a_about)
         self._rebuild_recent()
+
+    # ---------------------------------------------------------------- registro degli errori
+    def notify_error(self, summary: str) -> None:
+        """Errore non gestito in un'azione: avviso non bloccante (una volta per tipo di errore), dettagli nel registro."""
+        seen = getattr(self, "_errors_seen", set())
+        self._errors_seen = seen
+        if summary in seen or len(seen) > 20:
+            return
+        seen.add(summary)
+        QTimer.singleShot(0, lambda: self._error_box(summary))
+
+    def _error_box(self, summary: str) -> None:
+        from . import crashlog
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning); box.setWindowTitle(tr("Errore"))
+        box.setText(tr("Si è verificato un errore imprevisto. L'operazione potrebbe non essere stata completata."))
+        box.setInformativeText(summary[:400])
+        box.setDetailedText(tr("Dettagli nel registro degli errori:\n{}").format(crashlog.log_path()))
+        box.setStandardButtons(QMessageBox.Ok)
+        box.open()
+
+    def report_previous_crash(self) -> None:
+        from . import crashlog
+        if QMessageBox.question(self, tr("Chiusura imprevista"),
+                                tr("L'ultima volta PDFDesk si è chiuso in modo imprevisto.\n\nVuoi vedere il registro degli errori, "
+                                   "da inviare a chi ti dà assistenza?")) == QMessageBox.Yes:
+            self.show_error_log()
+
+    def show_error_log(self) -> None:
+        from . import crashlog
+        from PySide6.QtGui import QDesktopServices
+        from PySide6.QtCore import QUrl
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QPlainTextEdit, QVBoxLayout
+        dlg = QDialog(self); dlg.setWindowTitle(tr("Registro degli errori")); dlg.resize(820, 520)
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(QLabel(tr("File: {}").format(crashlog.log_path())))
+        txt = QPlainTextEdit(crashlog.recent_entries() or tr("Nessun errore registrato.")); txt.setReadOnly(True)
+        txt.setLineWrapMode(QPlainTextEdit.NoWrap)
+        lay.addWidget(txt, 1)
+        bb = QDialogButtonBox(QDialogButtonBox.Close)
+        b_copy = bb.addButton(tr("Copia"), QDialogButtonBox.ActionRole)
+        b_dir = bb.addButton(tr("Apri cartella"), QDialogButtonBox.ActionRole)
+        b_copy.clicked.connect(lambda: QApplication.clipboard().setText(txt.toPlainText()))
+        b_dir.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(crashlog.log_path()))))
+        bb.rejected.connect(dlg.reject)
+        lay.addWidget(bb)
+        txt.moveCursor(txt.textCursor().MoveOperation.End)
+        dlg.exec()
 
     def check_updates(self, fetch=None) -> None:
         """Controlla l'ultima release su GitHub (in un thread, senza bloccare l'interfaccia)."""

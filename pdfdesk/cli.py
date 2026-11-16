@@ -63,7 +63,27 @@ def main(argv=None) -> int:
             pass
     if argv and (argv[0].startswith("-") or len(argv) > 1):
         _attach_console()
+    from . import crashlog
+    crashlog.install(gui=False)                # registro degli errori (anche per la riga di comando)
     args = build_parser().parse_args(argv)
+    # file di ingresso mancanti: messaggio chiaro invece di una traccia Python
+    inputs = []
+    if args.compress:
+        inputs.append(args.compress[0])
+    for a in ("check", "verify"):
+        v = getattr(args, a, None)
+        if isinstance(v, str):
+            inputs.append(v)
+    for a in ("merge",):
+        v = getattr(args, a, None)
+        if v:
+            inputs += list(v[1:])
+    if args.translate:
+        inputs += list(args.translate)
+    missing = [f for f in inputs if not os.path.isfile(f)]
+    if missing:
+        print(f"{VERSION_LINE}\nERRORE: file non trovato: " + ", ".join(missing), file=sys.stderr)
+        return 2
     if args.selftest:
         from .selftest import run
         return run()
@@ -195,9 +215,18 @@ def run_gui(path=None) -> int:
     app.setApplicationVersion(__version__)
     app.setWindowIcon(app_icon())
     app.setDesktopFileName("pdfdesk")          # collega la finestra al file .desktop (icona e raggruppamento su Wayland e X11)
+    from . import crashlog
+    crashlog.install(gui=True)
+    crashlog.install_qt_handler()
     w = MainWindow(path)
+    crashlog.set_gui_notify(w.notify_error)
     w.show()
+    if crashlog.previous_crash():
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(400, w.report_previous_crash)
     rc = app.exec()
+    crashlog.set_gui_notify(None)
     from . import shutdown
     shutdown.close_all_widgets()               # chiusura ordinata (vedi shutdown.py)
+    crashlog.clean_exit()
     return rc

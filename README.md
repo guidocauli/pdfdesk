@@ -78,6 +78,8 @@ Per aggiornare si sostituisce l'app.
 
 ### Aggiornamenti
 
+*Aiuto → Registro degli errori…* mostra gli errori registrati dal programma (file `pdfdesk-errori.log` nella cartella dei dati: `%APPDATA%\PDFDesk` su Windows, `~/Library/Application Support/PDFDesk` su macOS, `~/.local/share/PDFDesk` su Linux), da allegare a una segnalazione. Dopo una chiusura imprevista il programma lo propone al riavvio.
+
 *Aiuto → Verifica aggiornamenti…* confronta la versione in uso con l'ultima release su GitHub. Il controllo avviene solo su richiesta e non invia dati.
 
 ---
