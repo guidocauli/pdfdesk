@@ -7,7 +7,7 @@ import sys
 from typing import Optional
 
 from PySide6.QtCore import QEvent, QObject, QPointF, QSettings, QSize, Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QColor, QFont, QIcon, QImage, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (QAbstractItemView, QBoxLayout, QApplication, QCheckBox, QColorDialog, QComboBox, QDialog as _QDialog, QDialogButtonBox,
                                QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QProgressDialog,
                                QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QStackedWidget,
@@ -110,8 +110,14 @@ class ColorButton(QPushButton):
         super().__init__(parent)
         self.color = color
         self.allow_none = allow_none
-        self.setFixedWidth(52)
         self.clicked.connect(self._pick)
+        self.rescale()
+
+    def rescale(self) -> None:
+        """Dimensioni in proporzione al carattere dell'interfaccia."""
+        h = self.fontMetrics().height()
+        self._sw = QSize(max(32, round(h * 2.2)), max(14, round(h * 0.95)))
+        self.setFixedWidth(self._sw.width() + max(20, round(h * 1.2)))
         self._paint()
 
     def set_color(self, c) -> None:
@@ -119,15 +125,19 @@ class ColorButton(QPushButton):
         self._paint()
 
     def _paint(self) -> None:
-        pm = QPixmap(32, 14)
+        sw = getattr(self, "_sw", QSize(32, 14))
+        dpr = max(1.0, self.devicePixelRatioF())
+        pm = QPixmap(round(sw.width() * dpr), round(sw.height() * dpr))     # campione nitido anche ad alta densità
+        pm.setDevicePixelRatio(dpr)
         pm.fill(qcolor(self.color) if self.color else QColor(Qt.white))
         if not self.color:
             p = QPainter(pm)
+            p.setRenderHint(QPainter.Antialiasing)
             p.setPen(QPen(QColor(200, 0, 0), 2))
-            p.drawLine(0, 13, 31, 0)
+            p.drawLine(0, sw.height() - 1, sw.width() - 1, 0)
             p.end()
         self.setIcon(pm)
-        self.setIconSize(QSize(32, 14))
+        self.setIconSize(sw)
 
     def _pick(self) -> None:
         c = QColorDialog.getColor(qcolor(self.color) if self.color else QColor(Qt.white), self, tr("Scegli colore"))
@@ -220,14 +230,19 @@ class StyleButtons(QWidget):
         self.btn: dict[str, QToolButton] = {}
         for key, label, tip in self.LETTERS:
             b = QToolButton(); b.setText(label); b.setCheckable(True); b.setToolTip(tip); b.setAutoRaise(False)
-            side = max(26, int(self.fontMetrics().height() * 1.7))
-            b.setFixedSize(side, side)
-            f = b.font(); f.setBold(key == "b"); f.setItalic(key == "i"); f.setUnderline(key == "u"); f.setStrikeOut(key == "s")
-            b.setFont(f)
             b.toggled.connect(lambda _on: self._emit())
             lay.addWidget(b)
             self.btn[key] = b
         self._lock = False
+        self.rescale()
+
+    def rescale(self) -> None:
+        """Pulsanti quadrati in proporzione al carattere; lo stile (grassetto, corsivo…) resta sul carattere corrente."""
+        side = max(26, int(self.fontMetrics().height() * 1.7))
+        for key, b in self.btn.items():
+            b.setFixedSize(side, side)
+            f = QFont(self.font()); f.setBold(key == "b"); f.setItalic(key == "i"); f.setUnderline(key == "u"); f.setStrikeOut(key == "s")
+            b.setFont(f)
 
     def _emit(self) -> None:
         if not self._lock:
@@ -271,10 +286,8 @@ class PropertiesPanel(QWidget):
                 (self.font, tr("Carattere del testo (anche TTF/OTF installati o aggiunti)")), (self.size, tr("Dimensione del testo in punti")))
         for w, t in tips:
             w.setToolTip(t)
+        self._compact, self._vertical = compact, False
         if compact:
-            self.opacity.setFixedWidth(70)
-            self.font.setMinimumWidth(110); self.font.setMaximumWidth(150)
-            self.width.setFixedWidth(62); self.size.setFixedWidth(62)
             h = QBoxLayout(QBoxLayout.LeftToRight, self)
             self._box = h
             h.setContentsMargins(4, 0, 4, 0); h.setSpacing(5)
@@ -303,16 +316,36 @@ class PropertiesPanel(QWidget):
         self.size.valueChanged.connect(lambda v: self._emit(fontsize=v))
         self.styles_.changed.connect(lambda st: self._emit(style=st))
         self.font.codeChanged.connect(lambda c: self.styles_.set_custom_font(c.startswith("@")))
+        self.rescale()
+
+    def rescale(self) -> None:
+        """Larghezze dei controlli in proporzione al carattere dell'interfaccia (prima erano in pixel fissi e, con un
+        carattere grande, tagliavano i valori). Da richiamare dopo un cambio di dimensione del carattere."""
+        fm = self.fontMetrics()
+        arrows = max(22, round(fm.height() * 1.5))                 # frecce delle caselle numeriche
+        spin = fm.horizontalAdvance("99.00") + arrows + 7           # con il carattere di sistema: le misure di sempre
+        if self._compact:
+            v = self._vertical
+            self.width.setFixedWidth(spin); self.size.setFixedWidth(spin)
+            fmin = fm.horizontalAdvance("Helvetica") + arrows + (10 if v else 35)
+            self.font.setMinimumWidth(fmin); self.font.setMaximumWidth(round(fmin * 1.35))
+            self.opacity.setFixedWidth(round(fm.horizontalAdvance("M") * (5.6 if v else 6.4)))
+        else:
+            self.width.setMinimumWidth(spin); self.size.setMinimumWidth(spin)
+        for w in (self.stroke, self.fill):
+            w.rescale()
+        self.styles_.rescale()
+        self.updateGeometry()
 
     def set_vertical(self, vertical: bool) -> None:
         """Barra agganciata ai lati: i controlli si dispongono in colonna."""
         box = getattr(self, "_box", None)
         if box is None:
             return
+        self._vertical = vertical
         box.setDirection(QBoxLayout.TopToBottom if vertical else QBoxLayout.LeftToRight)
         box.setContentsMargins(2, 4, 2, 4) if vertical else box.setContentsMargins(4, 0, 4, 0)
-        self.font.setMaximumWidth(110 if vertical else 150); self.font.setMinimumWidth(80 if vertical else 110)
-        self.opacity.setFixedWidth(62 if vertical else 70)
+        self.rescale()
         self.adjustSize()
 
     def _emit(self, **kw) -> None:

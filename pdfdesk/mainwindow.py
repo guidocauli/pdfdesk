@@ -226,17 +226,20 @@ class MainWindow(QMainWindow):
         self.find_edit = QLineEdit()
         self.find_edit.returnPressed.connect(self.find_run)
         h.addWidget(self.find_edit, 1)
+        self._find_buttons = []                                # larghezza in proporzione al carattere (apply_prefs)
         for text, fn in (("◀", lambda: self.find_step(-1)), ("▶", lambda: self.find_step(1))):
             b = QPushButton(text)
             b.setFixedWidth(34)
             b.clicked.connect(fn)
             h.addWidget(b)
+            self._find_buttons.append(b)
         self.find_lbl = QLabel("")
         h.addWidget(self.find_lbl)
         c = QPushButton("✕")
         c.setFixedWidth(30)
         c.clicked.connect(self.find_close)
         h.addWidget(c)
+        self._find_buttons.append(c)
         self.findbar.hide()
         return self.findbar
 
@@ -669,11 +672,21 @@ class MainWindow(QMainWindow):
         from . import theme
         theme.apply(QApplication.instance(), int(s.value("ui/theme", 0)))
         self._style_tabs()
-        self._apply_font(int(s.value("ui/fontpct", 100)))
+        fpct = max(70, min(200, int(s.value("ui/fontpct", 100))))
+        self._apply_font(fpct)
+        self.home.restyle()                                    # titoli e icone della pagina Attività seguono il carattere
+        self._restyle_tab_buttons()
+        self.props.rescale()                                   # larghezze della barra Proprietà
+        fh = self.fontMetrics().height()
+        self.zoom_slider.setFixedWidth(max(120, fh * 9))
+        self.lbl_zoom.setMinimumWidth(self.fontMetrics().horizontalAdvance("1600%") + 6)
+        for b in self._find_buttons:
+            b.setFixedWidth(max(30, round(fh * 2.1)))
         mode = int(s.value("ui/inmenus", 0))                   # 0 automatico, 1 integrati, 2 standard di Qt
         self.menus.enabled = mode in (0, 1)
         self.zoom_btn.setMenu(None if self.menus.enabled else self.menu_zoom)
-        px = (18, 22, 32)[max(0, min(2, int(s.value("ui/iconsize", 1))))]
+        # le icone delle barre crescono insieme al carattere dell'interfaccia (sono disegnate, quindi restano nitide)
+        px = round((18, 22, 32)[max(0, min(2, int(s.value("ui/iconsize", 1))))] * max(1.0, fpct / 100))
         style = (Qt.ToolButtonIconOnly, Qt.ToolButtonTextBesideIcon, Qt.ToolButtonTextUnderIcon)[max(0, min(2, int(s.value("ui/btnstyle", 0))))]
         locked = str(s.value("ui/locked", "false")).lower() == "true"
         for tb in self.bars:
@@ -1282,12 +1295,10 @@ class MainWindow(QMainWindow):
         b.setObjectName("tabClose")
         b.setText("×")
         b.setAutoRaise(True)
-        b.setFixedSize(18, 18)
         b.setCursor(Qt.PointingHandCursor)
         b.setToolTip(tr("Chiudi la scheda"))
         b.setFocusPolicy(Qt.NoFocus)
-        b.setStyleSheet("QToolButton#tabClose { border: none; border-radius: 9px; font-size: 15px; font-weight: bold; padding: 0 0 2px 0; }"
-                        "QToolButton#tabClose:hover { background: #d9534f; color: white; }")
+        self._size_tab_button(b)
 
         def close() -> None:
             for i in range(self.tabbar.count()):
@@ -1297,6 +1308,23 @@ class MainWindow(QMainWindow):
         b.clicked.connect(close)
         hl.addWidget(b)
         return box
+
+    def _size_tab_button(self, b: QToolButton) -> None:
+        """Dimensione del «×» proporzionale al carattere dell'interfaccia."""
+        pt = QApplication.instance().font().pointSizeF()
+        pt = pt if pt > 0 else 9.0
+        s = max(16, round(self.fontMetrics().height() * 1.25))
+        b.setFixedSize(s, s)
+        b.setStyleSheet(f"QToolButton#tabClose {{ border: none; border-radius: {s // 2}px; font-size: {pt * 1.35:.1f}pt;"
+                        " font-weight: bold; padding: 0 0 1px 0; }"
+                        "QToolButton#tabClose:hover { background: #d9534f; color: white; }")
+
+    def _restyle_tab_buttons(self) -> None:
+        for i in range(self.tabbar.count()):
+            box = self.tabbar.tabButton(i, QTabBar.RightSide)
+            b = box.findChild(QToolButton) if box is not None else None
+            if b is not None:
+                self._size_tab_button(b)
 
     def _on_tab_close(self, i: int) -> None:
         if 0 <= i < len(self.docs):

@@ -61,22 +61,51 @@ class _Card(QToolButton):
         super().__init__()
         self.setObjectName("homeCard")
         self.setCursor(Qt.PointingHandCursor)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.setMinimumHeight(72); self.setMinimumWidth(220)
+        # l'altezza segue il testo (che va a capo e cresce con il carattere dell'interfaccia): niente altezze fisse
+        sp = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum); sp.setHeightForWidth(True)
+        self.setSizePolicy(sp)
+        self.setMinimumWidth(220)
         self.setToolTip(desc); self.setAccessibleName(title)
         h = QHBoxLayout(self); h.setContentsMargins(14, 10, 14, 10); h.setSpacing(12)
-        self.ic = QLabel(); self.ic.setFixedSize(34, 34); self._ico = ico
+        self.ic = QLabel(); self._ico = ico
         v = QVBoxLayout(); v.setSpacing(2)
-        t = QLabel(title); t.setObjectName("cardTitle")
+        t = QLabel(title); t.setObjectName("cardTitle"); t.setWordWrap(True)
         d = QLabel(desc); d.setObjectName("cardDesc"); d.setWordWrap(True)
         for w in (self.ic, t, d):
             w.setAttribute(Qt.WA_TransparentForMouseEvents)
-        v.addWidget(t); v.addWidget(d)
+        v.addStretch(1); v.addWidget(t); v.addWidget(d); v.addStretch(1)     # testo centrato in verticale
         h.addWidget(self.ic, 0, Qt.AlignTop); h.addLayout(v, 1)
         self.refresh_icon()
 
-    def refresh_icon(self) -> None:               # l'icona segue i colori del tema
-        self.ic.setPixmap(icon(self._ico).pixmap(32, 32))
+    def refresh_icon(self) -> None:               # l'icona segue i colori del tema e la dimensione del carattere
+        s = _icon_px(self)
+        self.ic.setFixedSize(s + 2, s + 2)
+        self.ic.setPixmap(icon(self._ico).pixmap(s, s))
+        self.updateGeometry()
+
+    # un QToolButton non calcola la propria dimensione dal layout interno: la si chiede al layout
+    def sizeHint(self) -> QSize:
+        return self.layout().sizeHint().expandedTo(QSize(220, 0))
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(220, self.layout().minimumSize().height())
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, w: int) -> int:
+        return _hfw(self, w)
+
+
+def _hfw(widget: QWidget, w: int) -> int:
+    """Altezza per una larghezza data; -1 dal layout (nessun testo a capo) → altezza suggerita."""
+    h = widget.layout().totalHeightForWidth(w)
+    return h if h > 0 else widget.layout().sizeHint().height()
+
+
+def _icon_px(w: QWidget) -> int:
+    """Lato delle icone delle schede: circa due righe di testo, quindi segue la dimensione del carattere."""
+    return max(24, round(w.fontMetrics().height() * 2.1))
 
 
 class _RecentRow(QToolButton):
@@ -85,7 +114,7 @@ class _RecentRow(QToolButton):
         self.path = path
         self.setObjectName("homeRecent")
         self.setCursor(Qt.PointingHandCursor)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed); self.setMinimumHeight(64)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)     # altezza dal contenuto (sizeHint)
         self.setToolTip(path); self.setAccessibleName(os.path.basename(path))
         h = QHBoxLayout(self); h.setContentsMargins(10, 6, 10, 6); h.setSpacing(12)
         th = QLabel(); th.setObjectName("recThumb"); th.setFixedSize(QSize(48, 52)); th.setAlignment(Qt.AlignCenter)
@@ -97,6 +126,12 @@ class _RecentRow(QToolButton):
             w.setAttribute(Qt.WA_TransparentForMouseEvents)
         v.addStretch(1); v.addWidget(t); v.addWidget(d); v.addStretch(1)
         h.addWidget(th); h.addLayout(v, 1)
+
+    def sizeHint(self) -> QSize:
+        return self.layout().sizeHint()
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(160, self.layout().minimumSize().height())
 
 
 class HomePage(QWidget):
@@ -201,8 +236,15 @@ class HomePage(QWidget):
 
     # ------------------------------------------------------------ aspetto
     def restyle(self) -> None:
-        """Colori dal tema corrente (chiamata anche dopo un cambio di tema)."""
-        pal = QApplication.instance().palette()
+        """Colori dal tema corrente e dimensioni dal carattere dell'interfaccia (chiamata anche dopo un cambio di tema o
+        di dimensione del carattere): i titoli sono in proporzione al testo normale, non in pixel fissi."""
+        app = QApplication.instance()
+        pal = app.palette()
+        base = app.font().pointSizeF()
+        if base <= 0:                                   # carattere definito in pixel: conversione a punti
+            base = app.font().pixelSize() * 72 / max(1.0, self.logicalDpiY())
+        base = base if base > 0 else 10.0
+        h1, h2, ct = (f"{base * k:.1f}pt" for k in (2.1, 1.45, 1.1))
         text = pal.text().color(); hl = pal.highlight().color()
         win, card = pal.window().color().name(), pal.base().color().name()
         sub = f"rgba({text.red()},{text.green()},{text.blue()},0.62)"
@@ -210,10 +252,10 @@ class HomePage(QWidget):
         hov = f"rgba({hl.red()},{hl.green()},{hl.blue()},0.14)"
         self.setStyleSheet(f"""
 #homeInner {{ background: {win}; }}
-#homeH1 {{ font-size: 26px; font-weight: 600; }}
-#homeH2 {{ font-size: 17px; font-weight: 600; padding-top: 6px; }}
+#homeH1 {{ font-size: {h1}; font-weight: 600; }}
+#homeH2 {{ font-size: {h2}; font-weight: 600; padding-top: 6px; }}
 #homeSub, #cardDesc {{ color: {sub}; }}
-#cardTitle {{ font-weight: 600; font-size: 14px; }}
+#cardTitle {{ font-weight: 600; font-size: {ct}; }}
 QToolButton#homeCard {{ background: {card}; border: 1px solid {brd}; border-radius: 10px; }}
 QToolButton#homeCard:hover, QToolButton#homeCard:focus {{ border: 2px solid {hl.name()}; }}
 #recBox {{ background: {card}; border: 1px solid {brd}; border-radius: 10px; }}
