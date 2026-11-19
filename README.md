@@ -133,7 +133,10 @@ Ricompare quando si chiude l'ultimo documento; si può disattivare all'avvio in 
 ### Esportazione, stampa e salvataggio
 - **Esporta** in PNG, JPG, TIFF (anche multipagina), testo semplice, **DOCX** e **ODT**, con titoli, paragrafi, tabelle e immagini ricostruiti.
 - **Stampa** su qualsiasi stampante di sistema o su file PDF.
-- **Salva con nome / Ottimizza**: qualità predefinite (*Originale*, *Alta* 300 dpi, *Media* 150, *Bassa* 96, *Minima* 72) o personalizzate, scala di grigi, rimozione dei metadati, riduzione dei font, con stima della dimensione finale. Il testo resta sempre testo selezionabile: la compressione agisce solo su immagini e struttura del file.
+- **Salva con nome / Ottimizza**: qualità predefinite (*Originale*, *Alta* 300 dpi, *Media* 150, *Bassa* 96, *Minima* 72) o personalizzate, scala di grigi, rimozione dei metadati, con stima della dimensione finale. Il testo resta sempre testo selezionabile: la compressione agisce solo su immagini, font e struttura del file.
+  - L'ottimizzazione e le conversioni PDF/A e PDF/X creano sempre un **nuovo file** (proposto come `nome_ottimizzato.pdf`), aperto in una scheda accanto all'originale; il file originale non viene modificato.
+  - **Font**: lasciati come sono, ridotti ai soli caratteri usati, **incorporati tutti** (anche quelli mancanti, con Ghostscript) oppure **non incorporati** per un file più piccolo. Quest'ultima opzione toglie solo i font a codifica standard: i font composti (CID) e quelli simbolici restano incorporati, perché senza il loro file il testo non sarebbe leggibile. L'analisi del file indica quanti font sono incorporati e quali mancano.
+  - Da riga di comando: `pdfdesk --compress INGRESSO USCITA --fonts keep|subset|embed|unembed` (l'uscita deve essere un file diverso).
 - **Metadati** (Ctrl+D): campi standard e personalizzati, XMP.
 - **Estrai immagini**: tutte le immagini incorporate, oppure un'area della pagina in PNG, JPG o TIFF o negli appunti.
 

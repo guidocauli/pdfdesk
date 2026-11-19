@@ -831,6 +831,10 @@ class MainWindow(QMainWindow):
 
     def open_translated(self, orig: Optional[PdfDocument], out: Optional[str], data: bytes) -> None:
         """Apre il PDF tradotto in una scheda subito dopo l'originale (o al posto di una scheda già aperta sullo stesso file)."""
+        self.open_beside(orig, out, data, tr("Traduci PDF"))
+
+    def open_beside(self, orig: Optional[PdfDocument], out: Optional[str], data: bytes, title: str) -> None:
+        """Apre un PDF generato (traduzione, ottimizzazione) in una scheda subito dopo l'originale."""
         if out:
             ap = os.path.abspath(out)
             for i, d in enumerate(list(self.docs)):
@@ -840,7 +844,7 @@ class MainWindow(QMainWindow):
             try:
                 doc = PdfDocument.open(out)
             except Exception as e:
-                QMessageBox.warning(self, tr("Traduci PDF"), tr("Impossibile aprire il file:\n{}").format(e))
+                QMessageBox.warning(self, title, tr("Impossibile aprire il file:\n{}").format(e))
                 return
             self._add_recent(ap)
         else:
@@ -1385,11 +1389,14 @@ class MainWindow(QMainWindow):
         if not self.pdf:
             return False
         default = self.pdf.path or os.path.join(settings().value("lastdir", os.path.expanduser("~")), "documento.pdf")
-        dlg = SaveDialog(self, default, self.pdf.is_signed, standard=self.pdf.standard, raw=lambda: self.pdf.doc.tobytes(garbage=0))
+        dlg = SaveDialog(self, default, self.pdf.is_signed, standard=self.pdf.standard, raw=lambda: self.pdf.doc.tobytes(garbage=0),
+                         source=self.pdf.path)
         if dlg.exec() != SaveDialog.Accepted:
             return False
         opts = dlg.options()
         out = dlg.path.text().strip()
+        if dlg.optimizing():
+            return self._optimize_to_new(opts, out)
         if (self.pdf.has_permanent_changes and self.pdf.path and os.path.abspath(out) == os.path.abspath(self.pdf.path)
                 and os.path.exists(out)):
             c = self.confirm_permanent_overwrite()
@@ -1433,6 +1440,43 @@ class MainWindow(QMainWindow):
         self._refresh_ui()
         return True
 
+    def _optimize_to_new(self, opts, out: str) -> bool:
+        """Ottimizzazione / conversione: scrive un nuovo file e lo apre in una scheda accanto. Il documento aperto e il suo
+        file non cambiano (le eventuali modifiche non salvate sono incluse nel nuovo file, ma restano da salvare nell'originale)."""
+        src = self.pdf
+        if src.path and os.path.abspath(out) == os.path.abspath(src.path):
+            QMessageBox.warning(self, tr("Ottimizza"), tr("L'ottimizzazione non può sovrascrivere il file originale."))
+            return False
+        try:
+            raw = src.doc.tobytes(garbage=0)
+            if src.is_signed:                              # la copia non può avere firme valide: si tolgono solo dalla copia
+                cur = fitz.open("pdf", raw)
+                for page in cur:
+                    for w in list(page.widgets() or []):
+                        if w.field_type == fitz.PDF_WIDGET_TYPE_SIGNATURE:
+                            page.delete_widget(w)
+                raw = cur.tobytes(garbage=0); cur.close()
+            before = len(raw)
+            opts.runner = self.run_bg
+            opts.report = {}
+            data = compress.optimize_bytes(raw, opts)
+            compress.write_atomic(out, data)
+        except Exception as e:
+            QMessageBox.critical(self, tr("Ottimizza"), tr("Ottimizzazione non riuscita:\n{}").format(e))
+            return False
+        self.open_beside(src, out, data, tr("Ottimizza"))
+        rep = opts.report or {}
+        extra = ""
+        if "fonts_embedded" in rep:
+            extra = tr(" — font incorporati: {}").format(rep["fonts_embedded"])
+            if rep.get("fonts_missing"):
+                extra += tr(", ancora mancanti: {}").format(", ".join(rep["fonts_missing"][:5]))
+        elif "fonts_removed" in rep:
+            extra = tr(" — font tolti: {}, rimasti incorporati: {}").format(rep["fonts_removed"], rep["fonts_kept"])
+        self.msg(tr("Creato {}: {} → {}").format(os.path.basename(out), compress.human_size(before), compress.human_size(len(data))) + extra,
+                 15000)
+        return True
+
     def run_bg(self, fn, text: str = tr("Conversione in corso…")):
         """Esegue `fn` (solo codice che non tocca i documenti aperti: es. un sottoprocesso) in un thread, tenendo viva l'interfaccia."""
         import threading
@@ -1471,7 +1515,13 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-    def _write_standard(self, out: str, key: str, icc) -> bool:
+    def _write_standard(self, out: str, key: str, icc, new_file: bool = False) -> bool:
+        """Conversione a PDF/A o PDF/X. Con new_file il risultato è un nuovo file aperto accanto: l'originale non cambia
+        (con new_file=False è il «Salva» di un documento già conforme, che ne ripristina la conformità)."""
+        if new_file and self.pdf.path and os.path.abspath(out) == os.path.abspath(self.pdf.path):
+            QMessageBox.warning(self, tr("Conversione"), tr("La conversione crea un nuovo file e non modifica l'originale: "
+                                                            "scegli un nome diverso da quello del documento aperto."))
+            return False
         try:
             raw = self.pdf.doc.tobytes(garbage=0)
             data = compress.optimize_bytes(raw, compress.SaveOptions("original", standard=key, icc=icc, runner=self.run_bg))
@@ -1480,9 +1530,12 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, tr("Conversione"), tr("Conversione non riuscita:\n{}").format(e))
             return False
-        self.pdf.mark_saved(out)
-        self._after_standard_save(data)
-        self._add_recent(os.path.abspath(out))
+        if new_file:
+            self.open_beside(self.pdf, out, data, tr("Conversione"))
+        else:
+            self.pdf.mark_saved(out)
+            self._after_standard_save(data)
+            self._add_recent(os.path.abspath(out))
         self._refresh_ui()
         if rep.ok:
             self.msg(tr("Salvato come {} ({}), verifica superata.").format(pdfstd.STANDARDS[key].label, compress.human_size(len(data))), 10000)
@@ -1502,7 +1555,7 @@ class MainWindow(QMainWindow):
         default = os.path.splitext(base)[0] + "-" + key + ".pdf"
         out, _ = QFileDialog.getSaveFileName(self, tr("Salva convertito"), default, tr("PDF (*.pdf)"))
         if out:
-            self._write_standard(out if out.lower().endswith(".pdf") else out + ".pdf", key, icc)
+            self._write_standard(out if out.lower().endswith(".pdf") else out + ".pdf", key, icc, new_file=True)
 
     # ================================================================== strumenti
     def set_tool(self, tool: str) -> None:

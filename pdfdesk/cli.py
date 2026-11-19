@@ -21,6 +21,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="qualità per --compress (default: medium)")
     p.add_argument("--gray", action="store_true", help="con --compress: immagini in scala di grigi")
     p.add_argument("--strip-metadata", action="store_true", help="con --compress: rimuove i metadati")
+    p.add_argument("--fonts", default="keep", choices=[k for k, _ in compress.FONT_MODES],
+                   help="con --compress: keep (come sono), subset (ridotti ai caratteri usati), embed (incorpora anche i "
+                        "mancanti), unembed (toglie i font a codifica standard)")
     p.add_argument("--standard", choices=list(pdfstd.STANDARDS), metavar="STD",
                    help="con --compress: converte a uno standard (" + ", ".join(pdfstd.STANDARDS) + "); con --check: standard da verificare")
     p.add_argument("--icc", metavar="FILE", help="con --standard pdfx-*: profilo ICC di stampa (CMYK)")
@@ -99,15 +102,25 @@ def main(argv=None) -> int:
         return 0
     if args.compress:
         src, dst = args.compress
+        if os.path.abspath(src) == os.path.abspath(dst):
+            print(f"{VERSION_LINE}\nERRORE: --compress crea un nuovo file: OUTPUT deve essere diverso da INPUT", file=sys.stderr)
+            return 2
         data = open(src, "rb").read()
+        rep: dict = {}
         try:
-            out = compress.optimize_bytes(data, compress.SaveOptions(args.preset, args.gray, args.strip_metadata and not args.standard,
-                                                                     False, args.standard, args.icc))
+            o = compress.SaveOptions(args.preset, args.gray, args.strip_metadata and not args.standard, False, args.standard, args.icc)
+            o.font_mode, o.report = args.fonts, rep
+            out = compress.optimize_bytes(data, o)
         except pdfstd.StandardError as e:
             print(f"{VERSION_LINE}\nERRORE: {e}", file=sys.stderr)
             return 3
         compress.write_atomic(dst, out)
         print(f"{VERSION_LINE}\n{src} → {dst}: {compress.human_size(len(data))} → {compress.human_size(len(out))}")
+        if "fonts_embedded" in rep:
+            print(f"font incorporati: {rep['fonts_embedded']}" + (f"; ancora mancanti: {', '.join(rep['fonts_missing'])}"
+                                                                  if rep["fonts_missing"] else ""))
+        elif "fonts_removed" in rep:
+            print(f"font tolti: {rep['fonts_removed']}; rimasti incorporati: {rep['fonts_kept']}")
         return 0
     if args.check:
         data = open(args.check, "rb").read()
@@ -164,6 +177,8 @@ def main(argv=None) -> int:
                 out_data, rep = T.translate_document(data, src, args.to, eng)
                 out = T.output_name(f, args.to, args.name or T.DEFAULT_PATTERN, args.outdir or "")
                 from .compress import write_atomic
+                if os.path.dirname(out):
+                    os.makedirs(os.path.dirname(out), exist_ok=True)     # --outdir non ancora esistente
                 write_atomic(out, out_data)
                 print(f"{f} → {out}\n  " + rep.text().replace("\n", "\n  "))
             except Exception as e:

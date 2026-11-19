@@ -32,7 +32,8 @@ def fetch_latest(timeout: float = 8.0, url: str = API_URL) -> dict:
     """Restituisce {'version', 'url', 'notes'} dell'ultima release; solleva eccezioni di rete."""
     req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json",
                                                "User-Agent": "PDFDesk-update-check"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 (URL https fisso)
+    from . import net
+    with net.urlopen(req, timeout=timeout) as r:
         data = json.loads(r.read().decode("utf-8"))
     tag = str(data.get("tag_name") or data.get("name") or "")
     return {"version": tag.lstrip("vV"), "url": data.get("html_url") or RELEASES_URL,

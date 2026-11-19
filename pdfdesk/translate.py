@@ -128,8 +128,9 @@ def installed_pairs() -> set:
 
 def fetch_index(timeout: int = 30) -> list[ModelInfo]:
     import urllib.request
+    from . import net
     try:
-        with urllib.request.urlopen(urllib.request.Request(INDEX_URL, headers={"User-Agent": "PDFDesk"}), timeout=timeout) as r:
+        with net.urlopen(urllib.request.Request(INDEX_URL, headers={"User-Agent": "PDFDesk"}), timeout=timeout) as r:
             data = json.loads(r.read().decode("utf-8"))
     except Exception as e:
         raise TranslateError(tr("Impossibile scaricare l'elenco dei modelli di traduzione: {}").format(e)) from e
@@ -267,8 +268,9 @@ def _http_json(url: str, payload: dict, headers: dict, timeout: int = 60):
     import urllib.error
     req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
                                  headers={"Content-Type": "application/json", "User-Agent": "PDFDesk", **headers})
+    from . import net
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with net.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", "replace")[:300]

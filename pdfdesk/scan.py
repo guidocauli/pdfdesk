@@ -330,9 +330,10 @@ def _download(url: str, dest: str, progress: Optional[Callable[[int, int], bool]
     """Scarica `url` in `dest`; se `sha256` è dato, il file deve corrispondere, altrimenti viene cancellato e si segnala l'errore."""
     import hashlib
     import urllib.request
+    from . import net
     h = hashlib.sha256()
     try:
-        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "PDFDesk"}), timeout=60) as r, open(dest, "wb") as f:
+        with net.urlopen(urllib.request.Request(url, headers={"User-Agent": "PDFDesk"}), timeout=60) as r, open(dest, "wb") as f:
             total = int(r.headers.get("Content-Length") or 0); got = 0
             while True:
                 b = r.read(256 * 1024)

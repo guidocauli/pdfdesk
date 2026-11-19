@@ -702,12 +702,17 @@ class SignatureLibraryDialog(QDialog):
 
 # ---------------------------------------------------------------------- salvataggio / compressione
 class SaveDialog(QDialog):
-    def __init__(self, parent, default_path: str, signed: bool, orig_size: int = 0, standard: Optional[str] = None, raw=None) -> None:
+    def __init__(self, parent, default_path: str, signed: bool, orig_size: int = 0, standard: Optional[str] = None, raw=None,
+                 source: Optional[str] = None) -> None:
         super().__init__(parent)
         from PySide6.QtWidgets import QTabWidget
         self.setWindowTitle(tr("Salva con nome / Ottimizza"))
-        self.resize(620, 560)
+        self.resize(620, 580)
         self.signed = signed
+        # l'ottimizzazione crea sempre un nuovo file: il nome proposto passa da «originale» a «originale_ottimizzato»
+        self._source = os.path.abspath(source) if source else None
+        self._plain_path = default_path
+        self._opt_path = self.optimized_name(default_path)
         self._raw = raw                      # callable → bytes del documento attuale (per analisi e stima)
         self._orig = 0
         lay = QVBoxLayout(self)
@@ -716,6 +721,10 @@ class SaveDialog(QDialog):
         b = QPushButton(tr("Sfoglia…")); b.clicked.connect(self._browse)
         prow.addWidget(QLabel(tr("File di destinazione"))); prow.addWidget(self.path, 1); prow.addWidget(b)
         lay.addLayout(prow)
+        self.newfile = QLabel(tr("Con queste opzioni il documento viene ottimizzato in un nuovo file, aperto in una scheda "
+                                 "accanto all'originale. Il file originale non viene modificato."))
+        self.newfile.setWordWrap(True); self.newfile.setStyleSheet("color: #1a5fb4")
+        lay.addWidget(self.newfile)
         tabs = QTabWidget(); lay.addWidget(tabs, 1)
 
         # ---- scheda «Qualità»
@@ -731,9 +740,21 @@ class SaveDialog(QDialog):
         v1.addWidget(self.desc)
         self.gray = QCheckBox(tr("Immagini in scala di grigi"))
         self.meta = QCheckBox(tr("Rimuovi metadati (autore, titolo, XMP)"))
-        self.fonts = QCheckBox(tr("Riduci i font incorporati ai soli caratteri usati"))
-        for c in (self.gray, self.meta, self.fonts):
+        for c in (self.gray, self.meta):
             v1.addWidget(c)
+        frow = QFormLayout()
+        self.fonts = QComboBox()
+        for k, lab in compress.FONT_MODES:
+            self.fonts.addItem(tr(lab), k)
+        if not pdfstd.gs_available():
+            self.fonts.model().item(self.fonts.findData("embed")).setEnabled(False)
+        self.fonts.setToolTip(tr("«Incorpora» rende il file uguale su ogni computer (usa Ghostscript; i font che mancano anche "
+                                 "sul sistema vengono sostituiti con font simili). «Non incorporare» toglie solo i font a "
+                                 "codifica standard: quelli composti (CID, tipici di molti programmi e dei testi non latini) "
+                                 "e quelli simbolici restano incorporati, altrimenti il testo diventerebbe illeggibile."))
+        self.fonts.currentIndexChanged.connect(self._update)
+        frow.addRow(tr("Font"), self.fonts)
+        v1.addLayout(frow)
         self.std = StandardPicker(self, StandardDialog._key_for(standard))
         self.std.changed.connect(self._update)
         v1.addWidget(self.std)
@@ -744,8 +765,9 @@ class SaveDialog(QDialog):
         note = QLabel(tr("Il testo resta sempre testo selezionabile e ricercabile: la compressione agisce solo sulle immagini e sulla struttura del file."))
         note.setWordWrap(True)
         v1.addWidget(note)
-        self.warn = QLabel(tr("⚠ Questo PDF contiene firme digitali. Ricomprimerlo riscrive il file e le firme esistenti diventeranno NON valide. "
-                           "Per mantenerle valide scegli «Originale»; per comprimere e firmare usa Firma → Firma digitale (comprime prima, poi firma)."))
+        self.warn = QLabel(tr("⚠ Questo PDF contiene firme digitali. Il nuovo file ottimizzato non avrà le firme (non sarebbero più "
+                           "valide); il file originale firmato resta com'è. Per comprimere e firmare usa Firma → Firma digitale "
+                           "(comprime prima, poi firma)."))
         self.warn.setWordWrap(True); self.warn.setStyleSheet("color: #b00020")
         self.ack = QCheckBox(tr("Ho capito: invalida le firme esistenti"))
         v1.addWidget(self.warn); v1.addWidget(self.ack)
@@ -813,10 +835,30 @@ class SaveDialog(QDialog):
         self.bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         self.bb.accepted.connect(self._ok); self.bb.rejected.connect(self.reject)
         lay.addWidget(self.bb)
-        for w in (self.resample, self.k_color, self.k_gray, self.k_bw):
+        for w in (self.resample, self.k_color, self.k_gray, self.k_bw, self.gray, self.meta, self.clean, self.thumbs, self.attach,
+                  self.js, self.lin):
             w.toggled.connect(self._update)
+        self.garbage.currentIndexChanged.connect(self._update); self.objstm.currentIndexChanged.connect(self._update)
         self._load_preset()
         self._update()
+
+    @staticmethod
+    def optimized_name(path: str) -> str:
+        """«nome.pdf» → «nome_ottimizzato.pdf» (con un numero se esiste già)."""
+        stem, _ = os.path.splitext(path)
+        cand = f"{stem}_{tr('ottimizzato')}.pdf"
+        n = 2
+        while os.path.exists(cand):
+            cand = f"{stem}_{tr('ottimizzato')}-{n}.pdf"; n += 1
+        return cand
+
+    def optimizing(self) -> bool:
+        """True se le opzioni riscrivono il file (ottimizzazione o conversione): il risultato va in un nuovo file."""
+        return not self.preserves_signatures()
+
+    def _same_as_source(self) -> bool:
+        p = self.path.text().strip()
+        return bool(self._source and p and os.path.abspath(p) == self._source)
 
     def _browse(self) -> None:
         p, _ = QFileDialog.getSaveFileName(self, tr("Salva PDF"), self.path.text(), tr("PDF (*.pdf)"))
@@ -850,7 +892,7 @@ class SaveDialog(QDialog):
             w.setEnabled(not std)
         if std:
             self.preset.blockSignals(True); self.preset.setCurrentIndex(self.preset.findData("original")); self.preset.blockSignals(False)
-            self.gray.setChecked(False); self.fonts.setChecked(False)
+            self.gray.setChecked(False); self.fonts.setCurrentIndex(0)
             self.meta.setChecked(False); self.meta.setEnabled(False)       # i metadati XMP sono obbligatori negli standard
         elif hasattr(self, "std"):
             self.meta.setEnabled(True)
@@ -858,19 +900,29 @@ class SaveDialog(QDialog):
             self.std_note.setVisible(bool(std))
             self.b_est.setEnabled(self._raw is not None and not std)
         danger = self.signed and (key != "original" or bool(std) or self._has_extras())
-        self.warn.setVisible(danger); self.ack.setVisible(danger)
+        self.warn.setVisible(danger); self.ack.setVisible(False)       # l'originale non si tocca: basta l'avviso
+        if hasattr(self, "newfile"):
+            opt = self.optimizing()
+            self.newfile.setVisible(opt)
+            p = self.path.text().strip()
+            if opt and (p == self._plain_path or self._same_as_source()):
+                self.path.setText(self._opt_path)
+            elif not opt and p == self._opt_path:
+                self.path.setText(self._plain_path)
 
     def _has_extras(self) -> bool:
-        return any(c.isChecked() for c in (self.clean, self.thumbs, self.attach, self.js, self.lin, self.gray, self.meta, self.fonts)) \
-            or self.garbage.currentData() not in (None, 1) or self.objstm.currentData() is not None
+        return any(c.isChecked() for c in (self.clean, self.thumbs, self.attach, self.js, self.lin, self.gray, self.meta)) \
+            or self.fonts.currentData() != "keep" or self.garbage.currentData() not in (None, 1) or self.objstm.currentData() is not None
 
     def _ok(self) -> None:
         if not self.path.text().strip():
             return
         if not self.std.validate():
             return
-        if self.signed and self.warn.isVisible() and not self.ack.isChecked():
-            QMessageBox.warning(self, tr("Firme digitali"), tr("Conferma di voler invalidare le firme esistenti, oppure scegli «Originale» senza altre opzioni."))
+        if self.optimizing() and self._same_as_source():
+            QMessageBox.warning(self, tr("Ottimizza"), tr("L'ottimizzazione crea un nuovo file e non modifica l'originale: "
+                                                          "scegli un nome diverso da quello del documento aperto."))
+            self.path.setText(self._opt_path)
             return
         self.accept()
 
@@ -883,7 +935,8 @@ class SaveDialog(QDialog):
         if std:                                   # parametri obbligatori: solo la conversione
             return compress.SaveOptions("original", False, False, False, std, self.std.icc_path())
         key = self.preset.currentData()
-        o = compress.SaveOptions(key, self.gray.isChecked(), self.meta.isChecked(), self.fonts.isChecked(), None, None)
+        o = compress.SaveOptions(key, self.gray.isChecked(), self.meta.isChecked(), False, None, None)
+        o.font_mode = self.fonts.currentData() or "keep"
         o.garbage = self.garbage.currentData(); o.objstms = self.objstm.currentData(); o.clean_streams = self.clean.isChecked()
         o.drop_thumbnails = self.thumbs.isChecked(); o.drop_attachments = self.attach.isChecked(); o.drop_javascript = self.js.isChecked()
         o.linearize = self.lin.isChecked()

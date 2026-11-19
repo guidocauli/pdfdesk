@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -62,6 +63,22 @@ class SaveOptions:
     drop_attachments: bool = False
     drop_javascript: bool = False
     linearize: bool = False               # «Fast web view»
+    # --- font: "keep" (come sono), "subset" (ridotti ai caratteri usati), "embed" (incorpora anche i mancanti, ridotti),
+    #     "unembed" (toglie i font incorporati dove il visualizzatore può sostituirli). subset_fonts=True equivale a "subset".
+    font_mode: str = "keep"
+    report: Optional[dict] = None         # se è un dizionario, optimize_bytes vi scrive cosa ha fatto (font incorporati/rimossi)
+
+
+FONT_MODES = [
+    ("keep", "Lascia i font come sono"),
+    ("subset", "Riduci i font incorporati ai soli caratteri usati"),
+    ("embed", "Incorpora tutti i font (anche quelli mancanti), ridotti ai caratteri usati"),
+    ("unembed", "Non incorporare i font (file più piccolo; il visualizzatore usa i font di sistema)"),
+]
+
+
+def font_mode(opts: SaveOptions) -> str:
+    return "subset" if opts.font_mode == "keep" and opts.subset_fonts else opts.font_mode
 
 
 def resolve(opts: SaveOptions) -> tuple[Optional[int], int, int]:
@@ -76,16 +93,23 @@ def optimize_bytes(data: bytes, opts: Optional[SaveOptions] = None) -> bytes:
     """Riscrive il PDF con le opzioni date. Testo, vettoriali e campi restano intatti."""
     opts = opts or SaveOptions()
     thr, target, quality = resolve(opts)
+    fmode = "keep" if opts.standard else font_mode(opts)     # gli standard decidono da soli (PDF/A e PDF/X incorporano tutto)
+    rep = opts.report if isinstance(opts.report, dict) else {}
+    if fmode == "embed":                                      # prima di tutto: Ghostscript riscrive il file
+        data = embed_fonts(data, runner=opts.runner, report=rep)
     doc = fitz.open("pdf", data)
     try:
         if thr is not None or opts.grayscale:
             doc.rewrite_images(dpi_threshold=thr, dpi_target=target, quality=quality, lossy=opts.lossy, lossless=opts.lossless,
                                color=opts.kinds[0], gray=opts.kinds[1], bitonal=opts.kinds[2], set_to_gray=opts.grayscale)
-        if opts.subset_fonts:
+        if fmode == "subset":
             try:
                 doc.subset_fonts()
             except Exception:
                 pass
+        elif fmode == "unembed":
+            removed, kept = unembed_fonts(doc)
+            rep["fonts_removed"], rep["fonts_kept"] = removed, kept
         if opts.strip_metadata:
             doc.set_metadata({})
             try:
@@ -96,7 +120,7 @@ def optimize_bytes(data: bytes, opts: Optional[SaveOptions] = None) -> bytes:
             doc.scrub(attached_files=opts.drop_attachments, embedded_files=opts.drop_attachments, clean_pages=False,
                       hidden_text=False, javascript=opts.drop_javascript, metadata=False, redactions=False, remove_links=False,
                       reset_fields=False, reset_responses=False, thumbnails=opts.drop_thumbnails, xml_metadata=False)
-        conservative = opts.preset == "original" and not opts.strip_metadata and not opts.subset_fonts
+        conservative = opts.preset == "original" and not opts.strip_metadata and fmode == "keep"
         title = (doc.metadata or {}).get("title") or ""
         garbage = opts.garbage if opts.garbage is not None else (1 if conservative else 4)
         objstm = opts.objstms if opts.objstms is not None else (not conservative)
@@ -120,6 +144,186 @@ def _linearize(data: bytes) -> bytes:
         buf = io.BytesIO()
         pdf.save(buf, linearize=True)
         return buf.getvalue()
+
+
+# ---------------------------------------------------------------------- font: inventario, incorporazione, rimozione
+_REF = re.compile(r"(\d+)\s+0\s+R")
+_SUBSET = re.compile(r"^/?[A-Z]{6}\+")
+_SIMPLE_ENC = ("/WinAnsiEncoding", "/MacRomanEncoding", "/StandardEncoding", "/MacExpertEncoding")
+
+
+def _font_parts(doc: fitz.Document, x: int):
+    """(sottotipo, xref del descrittore o 0) di un dizionario /Font; None se l'oggetto non è un font."""
+    if doc.xref_get_key(x, "Type") != ("name", "/Font"):
+        return None
+    sub = doc.xref_get_key(x, "Subtype")[1]
+    if sub in ("/CIDFontType0", "/CIDFontType2"):              # parte di un font composto: si conta il font /Type0
+        return None
+    owner = x
+    if sub == "/Type0":
+        t, v = doc.xref_get_key(x, "DescendantFonts")
+        m = _REF.search(v or "")
+        if t == "xref" and m:                                   # l'array stesso è un oggetto indiretto
+            m = _REF.search(doc.xref_object(int(m.group(1)), compressed=True) or "")
+        if not m:
+            return sub, 0
+        owner = int(m.group(1))
+    t, v = doc.xref_get_key(owner, "FontDescriptor")
+    m = _REF.search(v or "") if t == "xref" else None
+    return sub, (int(m.group(1)) if m else 0)
+
+
+def _embedded(doc: fitz.Document, fd: int) -> bool:
+    return bool(fd) and any(doc.xref_get_key(fd, k)[0] != "null" for k in ("FontFile", "FontFile2", "FontFile3"))
+
+
+def font_inventory(doc: fitz.Document) -> dict:
+    """Font del file: quanti incorporati e quali no (i Type3 sono disegni, sempre «incorporati»)."""
+    emb, missing = 0, []
+    for x in range(1, doc.xref_length()):
+        try:
+            parts = _font_parts(doc, x)
+        except Exception:
+            continue
+        if not parts or parts[0] == "/Type3":
+            continue
+        if _embedded(doc, parts[1]):
+            emb += 1
+        else:
+            missing.append(_SUBSET.sub("", doc.xref_get_key(x, "BaseFont")[1] or "?").lstrip("/"))
+    return {"embedded": emb, "missing": sorted(set(missing))}
+
+
+def unembed_fonts(doc: fitz.Document) -> tuple[int, int]:
+    """Toglie i file dei font semplici con codifica nota e non simbolici: il visualizzatore li sostituisce con un font
+    di sistema dalla stessa metrica (le larghezze restano nel PDF). I font composti (CID, tipici di testi non latini) e
+    quelli simbolici restano incorporati, perché senza il loro file i caratteri non sarebbero più riconoscibili.
+    Restituisce (rimossi, lasciati incorporati)."""
+    removed = kept = 0
+    done: set[int] = set()
+    for x in range(1, doc.xref_length()):
+        try:
+            parts = _font_parts(doc, x)
+            if not parts or parts[0] == "/Type3":
+                continue
+            sub, fd = parts
+            if not _embedded(doc, fd):
+                continue
+            # serve una codifica che il visualizzatore sappia applicare a un font sostitutivo: un nome standard, oppure
+            # un dizionario con /BaseEncoding (le sole /Differences si appoggerebbero alla codifica interna del font)
+            et, ev = doc.xref_get_key(x, "Encoding")
+            if et == "xref":
+                m = _REF.search(ev or "")
+                ev = doc.xref_object(int(m.group(1)), compressed=True) if m else ""
+            enc_ok = (et == "name" and ev in _SIMPLE_ENC) or (et in ("dict", "xref") and "/BaseEncoding" in (ev or "")
+                                                               and any(e in ev for e in _SIMPLE_ENC))
+            base = _SUBSET.sub("", doc.xref_get_key(x, "BaseFont")[1] or "").lstrip("/")
+            if sub not in ("/Type1", "/TrueType", "/MMType1") or not enc_ok or base.startswith(("Symbol", "ZapfDingbats", "Wingdings")):
+                kept += 1
+                continue
+            if fd not in done:
+                for k in ("FontFile", "FontFile2", "FontFile3"):
+                    if doc.xref_get_key(fd, k)[0] != "null":
+                        doc.xref_set_key(fd, k, "null")
+                fn = doc.xref_get_key(fd, "FontName")
+                if fn[0] == "name" and _SUBSET.match(fn[1]):
+                    doc.xref_set_key(fd, "FontName", "/" + _SUBSET.sub("", fn[1]).lstrip("/"))
+                fl = doc.xref_get_key(fd, "Flags")[1]          # il sostituto è un font di testo: «non simbolico»
+                if fl.isdigit():
+                    doc.xref_set_key(fd, "Flags", str((int(fl) & ~4) | 32))
+                doc.xref_set_key(fd, "CharSet", "null")         # descriveva il sottoinsieme ormai tolto
+                done.add(fd)
+            bf = doc.xref_get_key(x, "BaseFont")
+            if bf[0] == "name" and _SUBSET.match(bf[1]):
+                doc.xref_set_key(x, "BaseFont", "/" + _SUBSET.sub("", bf[1]).lstrip("/"))
+            removed += 1
+        except Exception:
+            continue
+    return removed, kept
+
+
+def embed_fonts(data: bytes, runner=None, report: Optional[dict] = None) -> bytes:
+    """Incorpora i font mancanti (ridotti ai caratteri usati) riscrivendo il file con Ghostscript. Immagini JPEG copiate
+    senza ricompressione, le altre senza perdita; annotazioni e collegamenti conservati. Se non manca nessun font il file
+    resta com'è."""
+    import shutil
+    import subprocess
+    import tempfile
+    from . import pdfstd
+    rep = report if report is not None else {}
+    with fitz.open("pdf", data) as d:
+        before = font_inventory(d)["missing"]
+        nlinks = sum(len(p.get_links()) for p in d)
+    rep["fonts_embedded"], rep["fonts_missing"] = 0, []
+    if not before:
+        return data
+    gs = pdfstd.find_gs()
+    if not gs:
+        raise pdfstd.StandardError("per incorporare i font serve Ghostscript (incluso nei pacchetti ufficiali; da sorgente "
+                                   "installalo o imposta PDFDESK_GS)")
+    links = pdfstd._collect_links(data) if nlinks else []
+    tmp = tempfile.mkdtemp(prefix="pdfdesk-font-")
+    try:
+        pin, pout = os.path.join(tmp, "in.pdf"), os.path.join(tmp, "out.pdf")
+        with open(pin, "wb") as f:
+            f.write(data)
+        args = [gs, "-dBATCH", "-dNOPAUSE", "-dQUIET", "-dSAFER", "-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.7",
+                "-dEmbedAllFonts=true", "-dSubsetFonts=true", "-dAutoRotatePages=/None", "-dPreserveAnnots=true",
+                "-dDownsampleColorImages=false", "-dDownsampleGrayImages=false", "-dDownsampleMonoImages=false",
+                "-dAutoFilterColorImages=false", "-dAutoFilterGrayImages=false",
+                "-dColorImageFilter=/FlateEncode", "-dGrayImageFilter=/FlateEncode",
+                "-dPassThroughJPEGImages=true", "-dPassThroughJPXImages=true",
+                "-sColorConversionStrategy=LeaveColorUnchanged", f"-sOutputFile={pout}",
+                "-c", "<< /NeverEmbed [ ] >> setdistillerparams", "-f", pin]   # anche i 14 font standard
+        call = lambda: subprocess.run(args, capture_output=True, env=pdfstd._gs_env(gs), timeout=900,
+                                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        r = runner(call) if runner else call()
+        if r.returncode != 0 or not os.path.isfile(pout) or os.path.getsize(pout) == 0:
+            msg = (r.stderr or r.stdout or b"").decode("utf-8", "replace").strip()[-400:]
+            raise pdfstd.StandardError(f"Ghostscript non è riuscito a incorporare i font: {msg or 'errore sconosciuto'}")
+        with open(pout, "rb") as f:
+            out = f.read()
+    except subprocess.TimeoutExpired as e:
+        raise pdfstd.StandardError("incorporazione dei font troppo lunga (oltre 15 minuti)") from e
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    out = _repair_after_gs(out, data, links)
+    with fitz.open("pdf", out) as d:
+        after = font_inventory(d)["missing"]
+    rep["fonts_embedded"], rep["fonts_missing"] = len(set(before) - set(after)), after
+    return out
+
+
+def _repair_after_gs(out: bytes, src: bytes, links: list) -> bytes:
+    """Dopo Ghostscript: testo copiabile (ToUnicode), metadati di base e collegamenti se sono andati persi."""
+    import io
+    import pikepdf
+    from . import pdfstd
+    with fitz.open("pdf", src) as s:
+        meta = {k: v for k, v in (s.metadata or {}).items() if v and k in ("title", "author", "subject", "keywords")}
+    try:
+        with pikepdf.open(io.BytesIO(out)) as pdf:
+            try:
+                pdfstd._fix_tounicode(pdf)
+            except Exception:
+                pass
+            if links and not any(a.get("/Subtype") == "/Link" for p in pdf.pages for a in (p.obj.get("/Annots") or [])):
+                pdfstd._restore_links(pdf, links)
+            buf = io.BytesIO()
+            # i metadati XMP scritti da alcune versioni di Ghostscript non si lasciano aggiornare: si lasciano com'erano
+            pdf.save(buf, fix_metadata_version=False)
+            out = buf.getvalue()
+    except Exception:
+        pass                                   # la sistemazione è un di più: resta il file di Ghostscript
+    d = fitz.open("pdf", out)
+    try:
+        if meta:
+            m = d.metadata or {}
+            m.update(meta)
+            d.set_metadata(m)
+        return d.tobytes(garbage=1, deflate=True)
+    finally:
+        d.close()
 
 
 # ---------------------------------------------------------------------- analisi del contenuto
@@ -172,7 +376,12 @@ def analyze(data: bytes, top: int = 8) -> dict:
                 imgs.append({"page": pno + 1, "xref": xref, "w": im[2], "h": im[3], "bytes": raw, "dpi": dpi,
                              "filter": im[8] if len(im) > 8 else ""})
         imgs.sort(key=lambda i: -i["bytes"])
-        return {"total": len(data), "categories": cat, "counts": counts, "images": imgs[:top], "image_count": len(imgs)}
+        try:
+            finv = font_inventory(doc)
+        except Exception:
+            finv = {"embedded": 0, "missing": []}
+        return {"total": len(data), "categories": cat, "counts": counts, "images": imgs[:top], "image_count": len(imgs),
+                "fonts": finv}
     finally:
         doc.close()
 
@@ -185,6 +394,10 @@ def format_analysis(a: dict) -> str:
     for k, v in sorted(a["categories"].items(), key=lambda kv: -kv[1]):
         if v:
             lines.append(f"  {lab[k]}: {human_size(v)} ({v * 100 / tot:.0f}%, {a['counts'][k]} oggetti)")
+    f = a.get("fonts")
+    if f:
+        lines.append(f"Font: {f['embedded']} incorporati, {len(f['missing'])} non incorporati"
+                     + (f" ({', '.join(f['missing'][:8])}{'…' if len(f['missing']) > 8 else ''})" if f["missing"] else ""))
     if a["images"]:
         lines.append(f"Immagini più pesanti ({a['image_count']} in totale):")
         for i in a["images"]:
