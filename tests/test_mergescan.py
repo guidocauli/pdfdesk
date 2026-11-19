@@ -149,5 +149,62 @@ class ScanTests(unittest.TestCase):
         dlg.remove_selected(); self.assertEqual(dlg.pages.count(), 1)
 
 
+class MergeBookmarkTests(unittest.TestCase):
+    """Unione: i segnalibri originali di ogni file restano, sotto quello del file, e puntano alle pagine giuste."""
+
+    def _docs(self):
+        import tempfile
+        t = tempfile.mkdtemp(); a = os.path.join(t, "rel.pdf"); b = os.path.join(t, "man.pdf")
+        d = fitz.open()
+        for i in range(5):
+            d.new_page().insert_text((72, 72), f"A{i + 1}")
+        d.set_toc([[1, "Introduzione", 1], [2, "Scopo", 2], [1, "Costi", 3], [2, "Server", 4], [3, "Dettaglio", 5]]); d.save(a)
+        d = fitz.open()
+        for i in range(3):
+            d.new_page()
+        d.set_toc([[1, "Capitolo 1", 1], [1, "Capitolo 2", 3]]); d.save(b)
+        return t, a, b
+
+    def test_bookmarks_nested_and_remapped(self):
+        t, a, b = self._docs(); o = os.path.join(t, "o.pdf")
+        merge.merge_pdfs([{"path": a, "pages": "1,4-5"}, {"path": b}], o)
+        self.assertEqual(fitz.open(o).get_toc(), [
+            [1, "rel", 1], [2, "Introduzione", 1], [2, "Costi", 2], [3, "Server", 2], [4, "Dettaglio", 3],
+            [1, "man", 4], [2, "Capitolo 1", 4], [2, "Capitolo 2", 6]])
+
+    def test_without_file_bookmarks_originals_kept(self):
+        t, a, b = self._docs(); o = os.path.join(t, "o2.pdf")
+        merge.merge_pdfs([{"path": b}, {"path": a, "pages": "2"}], o, bookmarks=False)
+        self.assertEqual(fitz.open(o).get_toc(), [[1, "Capitolo 1", 1], [1, "Capitolo 2", 3], [1, "Introduzione", 4], [2, "Scopo", 4]])
+
+    def test_fix_levels(self):
+        self.assertEqual(merge._fix_levels([[3, "a", 1], [1, "b", 2], [4, "c", 3]]), [[1, "a", 1], [1, "b", 2], [2, "c", 3]])
+
+
+class MergeSizeTests(unittest.TestCase):
+    """Regressione: l'unione copiava font e immagini condivisi una volta per pagina (2 PDF da 300 KB → 6 MB)."""
+
+    def test_shared_resources_copied_once(self):
+        import tempfile
+        t = tempfile.mkdtemp(); a = os.path.join(t, "a.pdf"); o = os.path.join(t, "o.pdf")
+        logo = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 300, 300), False); logo.clear_with(120)
+        img = logo.tobytes("png")
+        d = fitz.open()
+        for i in range(12):
+            pg = d.new_page(); pg.insert_text((72, 72), f"Pagina {i + 1}"); pg.insert_image(fitz.Rect(300, 40, 400, 140), stream=img)
+        d.save(a, garbage=4, deflate=True)
+        merge.merge_pdfs([{"path": a, "pages": "5,1-3,8-12"}, {"path": a}], o)
+        r = fitz.open(o)
+        self.assertEqual(len({x[0] for pg in r for x in pg.get_images()}), 1)        # una sola copia dell'immagine
+        self.assertLess(os.path.getsize(o), os.path.getsize(a) * 1.3)
+        # anche «Estrai pagine»
+        from pdfdesk.core import PdfDocument
+        e = os.path.join(t, "e.pdf")
+        PdfDocument.open(a).extract_pages([0, 2, 3, 7, 9], e)
+        r = fitz.open(e)
+        self.assertEqual(r.page_count, 5); self.assertEqual(len({x[0] for pg in r for x in pg.get_images()}), 1)
+        self.assertLess(os.path.getsize(e), os.path.getsize(a))
+
+
 if __name__ == "__main__":
     unittest.main()

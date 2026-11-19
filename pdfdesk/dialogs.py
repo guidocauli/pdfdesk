@@ -2083,7 +2083,7 @@ class MergeDialog(QDialog):
         bb0 = QPushButton(tr("Sfoglia…")); bb0.clicked.connect(self._browse)
         orow.addWidget(self.out, 1); orow.addWidget(bb0)
         f.addRow(tr("PDF finale"), orow)
-        self.bookmarks = QCheckBox(tr("Aggiungi un segnalibro per ogni file sorgente")); self.bookmarks.setChecked(True)
+        self.bookmarks = QCheckBox(tr("Aggiungi un segnalibro per ogni file sorgente (con sotto i suoi segnalibri)")); self.bookmarks.setChecked(True)
         self.open_after = QCheckBox(tr("Apri il risultato dopo l'unione")); self.open_after.setChecked(True)
         f.addRow(self.bookmarks); f.addRow(self.open_after)
         lay.addLayout(f)

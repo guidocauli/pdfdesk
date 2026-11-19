@@ -1732,9 +1732,15 @@ class PdfDocument:
 
     def extract_pages(self, pnos: Sequence[int], path: str) -> None:
         out = fitz.open()
+        runs = []                                     # pagine consecutive in un'unica copia
         for p in sorted(set(pnos)):
-            out.insert_pdf(self.doc, from_page=p, to_page=p)
-        out.save(path, garbage=3, deflate=True)
+            if runs and p == runs[-1][1] + 1:
+                runs[-1][1] = p
+            else:
+                runs.append([p, p])
+        for k, (p0, p1) in enumerate(runs):           # final=False: font e immagini condivisi copiati una volta sola
+            out.insert_pdf(self.doc, from_page=p0, to_page=p1, final=(k == len(runs) - 1))
+        out.save(path, garbage=4, deflate=True)
         out.close()
 
     # ------------------------------------------------------------------ uscita
@@ -1750,13 +1756,15 @@ class PdfDocument:
                 for w in list(page.widgets() or []):
                     if w.field_type == fitz.PDF_WIDGET_TYPE_SIGNATURE:
                         page.delete_widget(w)
-            out = cur.tobytes(garbage=1, deflate=True)
+            out = cur.tobytes(garbage=4, deflate=True)
             cur.close()
             self._pending_drop = True
             return out
         if self.is_signed:
             return self._signed_incremental()
-        return self.doc.tobytes(garbage=1, deflate=True)
+        # garbage=4 unisce gli oggetti identici: le caselle di testo con stile o font TTF/OTF e il testo riscritto
+        # incorporano ciascuno una copia dello stesso font (senza, 12 caselle = 12 copie)
+        return self.doc.tobytes(garbage=4, deflate=True)
 
     def verification_bytes(self) -> bytes:
         """Byte da sottoporre alla Verifica firme: le firme originali restano visibili anche se il documento è stato
@@ -1844,7 +1852,7 @@ class PdfDocument:
             for w in list(page.widgets() or []):
                 if w.field_type == fitz.PDF_WIDGET_TYPE_SIGNATURE:
                     page.delete_widget(w)
-        data = self.doc.tobytes(garbage=1, deflate=True)
+        data = self.doc.tobytes(garbage=4, deflate=True)
         self.signed_count = 0
         self._orig = None
         self._replace_doc(data)

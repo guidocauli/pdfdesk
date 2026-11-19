@@ -772,6 +772,7 @@ EN = {
     "Disponibile solo se il documento contiene firme digitali": "Available only if the document contains digital signatures",
     "Dimensioni dell'interfaccia": "Interface size",
     "Prestazioni": "Performance",
+    "Aggiungi un segnalibro per ogni file sorgente (con sotto i suoi segnalibri)": "Add a bookmark for each source file (with its own bookmarks below)",
     "&Registro degli errori…": "Error &log…",
     "Si è verificato un errore imprevisto. L'operazione potrebbe non essere stata completata.": "An unexpected error occurred. The operation may not have been completed.",
     "Dettagli nel registro degli errori:\n{}": "Details in the error log:\n{}",

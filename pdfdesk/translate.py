@@ -878,7 +878,13 @@ def translate_document(data: bytes, src: Optional[str], dst: str, engine: Engine
                 if m.get(k):
                     m[k] = tr_text(m[k])
             doc.set_metadata(m)
-        return doc.tobytes(garbage=3, deflate=True), rep
+        # ogni casella riscritta incorpora una copia dei font: si riducono ai caratteri usati e le copie identiche
+        # si uniscono (un documento di 300 KB tradotto pesava oltre 6 MB)
+        try:
+            doc.subset_fonts()
+        except Exception:
+            pass
+        return doc.tobytes(garbage=4, deflate=True), rep
     finally:
         doc.close()
 
