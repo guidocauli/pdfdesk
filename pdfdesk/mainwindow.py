@@ -26,6 +26,23 @@ from . import export as exporter
 from . import imgutil
 from . import extract as extractor
 from .i18n import tr
+from .i18n import language as i18n_lang
+from PySide6.QtCore import QEvent, Signal
+
+
+class _ClickLabel(QLabel):
+    """Etichetta della barra di stato che risponde al clic."""
+    clicked = Signal()
+
+    def mousePressEvent(self, e) -> None:
+        if e.button() == Qt.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(e)
+
+    def enterEvent(self, e) -> None:
+        self.setCursor(Qt.PointingHandCursor)
+        super().enterEvent(e)
+
 
 TOOLS = [  # chiave, etichetta, scorciatoia, suggerimento
     ("select", tr("Seleziona"), "V", tr("Seleziona, sposta e ridimensiona annotazioni (doppio clic sul testo per modificarlo)")),
@@ -101,7 +118,7 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
         self.tabbar = QTabBar()
-        self.tabbar.setTabsClosable(True)
+        self.tabbar.setTabsClosable(False)            # pulsante di chiusura proprio (_tab_close_button): staccato dal bordo
         self.tabbar.setMovable(True)
         self.tabbar.setDocumentMode(True)
         self.tabbar.setExpanding(False)
@@ -141,8 +158,7 @@ class MainWindow(QMainWindow):
 
         self.lbl_page = QLabel("")
         self.lbl_zoom = QLabel("")
-        self.statusBar().addPermanentWidget(self.lbl_page)
-        self.statusBar().addPermanentWidget(self.lbl_zoom)
+        self._build_statusbar()
 
         v_ = self.view
         v_.rectDrawn.connect(self.on_rect)
@@ -161,7 +177,7 @@ class MainWindow(QMainWindow):
         v_.contentTransformRequested.connect(self.on_content_transform)
         v_.contentDoubleClicked.connect(self.on_content_double)
         v_.currentPageChanged.connect(self.on_page_changed)
-        v_.zoomChanged.connect(lambda z: self.lbl_zoom.setText(f"{z * 100:.0f}%"))
+        v_.zoomChanged.connect(self._on_zoom_changed)
         v_.imageRotateRequested.connect(self.on_image_rotate)
         v_.rotateModeChanged.connect(lambda on: self.msg(tr("Modalità rotazione: trascina attorno al centro per ruotare (Maiusc = scatti di 15°); clicca fuori o premi Esc per uscire.") if on else "", 8000))
         QShortcut(QKeySequence(Qt.Key_Escape), self, self.escape_pressed)      # Esc: torna sempre allo strumento Seleziona
@@ -170,6 +186,7 @@ class MainWindow(QMainWindow):
         self.thumbs.action.connect(self.on_thumb_action)
         self.props.changed.connect(self.on_props_changed)
 
+        self._install_dblclick()
         self.set_tool("select")
         self._refresh_ui()
         s = settings()
@@ -385,6 +402,14 @@ class MainWindow(QMainWindow):
         m.addAction(self.a_nexttab)
         m.addAction(self.a_prevtab)
         m.addSeparator()
+        self.a_fullscreen = QAction(tr("Schermo &intero"), self)
+        self.a_fullscreen.setCheckable(True)
+        self.a_fullscreen.setShortcut(QKeySequence(QKeySequence.FullScreen) if not QKeySequence(QKeySequence.FullScreen).isEmpty()
+                                      else QKeySequence("F11"))
+        self.a_fullscreen.setToolTip(tr("Schermo intero (anche con doppio clic su una zona libera della finestra)"))
+        self.a_fullscreen.toggled.connect(self.toggle_fullscreen)
+        self.addAction(self.a_fullscreen)                  # la scorciatoia funziona anche con la barra dei menu nascosta
+        m.addAction(self.a_fullscreen)
         m.addAction(self.dock_pages.toggleViewAction())
         self.menu_bars = m.addMenu(tr("Barre degli strumenti"))
         m = mb.addMenu(tr("&Pagine"))
@@ -704,6 +729,194 @@ class MainWindow(QMainWindow):
             self.apply_prefs(relayout=int(settings().value("ui/rows", 0)) != old_rows)
             self.msg(tr("Preferenze salvate."))
 
+    # ================================================================== schermo intero
+    def toggle_fullscreen(self, on: Optional[bool] = None) -> None:
+        """Schermo intero e ritorno allo stato precedente (finestra normale o massimizzata)."""
+        on = (not self.isFullScreen()) if on is None else on
+        if on and not self.isFullScreen():
+            self._pre_fs_max = self.isMaximized()
+            self.showFullScreen()
+            self.msg(tr("Schermo intero: F11 o doppio clic su una zona libera per uscire."), 5000)
+        elif not on and self.isFullScreen():
+            self.showMaximized() if getattr(self, "_pre_fs_max", False) else self.showNormal()
+        if hasattr(self, "a_fullscreen"):
+            self.a_fullscreen.blockSignals(True); self.a_fullscreen.setChecked(self.isFullScreen()); self.a_fullscreen.blockSignals(False)
+
+    def _install_dblclick(self) -> None:
+        """Doppio clic sulle zone libere della finestra (barre degli strumenti, dei menu, delle schede e di stato) →
+        schermo intero. Il doppio clic sulle pagine conserva il suo uso (modifica di testo, immagini, annotazioni)."""
+        targets = [self.menuBar(), self.statusBar(), self.tabbar] + self.findChildren(QToolBar)
+        for w in targets:
+            w.installEventFilter(self)
+        self.view.backgroundDoubleClicked.connect(self.toggle_fullscreen)
+
+    def eventFilter(self, obj, ev) -> bool:
+        if ev.type() == QEvent.MouseButtonDblClick and ev.button() == Qt.LeftButton:
+            pos = ev.position().toPoint()
+            if obj is getattr(self, "zoom_slider", None):
+                if self.pdf is not None:
+                    self.view.set_zoom(1.0)
+                return True
+            free = False
+            if obj is self.tabbar:
+                free = self.tabbar.tabAt(pos) < 0
+            elif isinstance(obj, QToolBar):
+                free = not isinstance(obj.childAt(pos), (QToolButton, QSpinBox, QComboBox, QLineEdit))
+            elif obj is self.menuBar():
+                free = self.menuBar().actionAt(pos) is None
+            elif obj is self.statusBar():
+                free = self.statusBar().childAt(pos) is None
+            if free:
+                self.toggle_fullscreen()
+                return True
+        return super().eventFilter(obj, ev)
+
+    # ================================================================== barra di stato: statistiche e zoom
+    ZOOM_MIN, ZOOM_MAX, ZOOM_STEPS = 0.1, 6.0, 1000          # cursore logaritmico: stessa corsa per 10→100% e 100→600%
+
+    def _build_statusbar(self) -> None:
+        import math
+        from PySide6.QtWidgets import QSlider
+        sb = self.statusBar()
+        self.lbl_stats = _ClickLabel("")
+        self.lbl_stats.setToolTip(tr("Statistiche del documento (clic per i dettagli)"))
+        self.lbl_stats.clicked.connect(self.show_stats)
+        self.zoom_slider = QSlider(Qt.Horizontal)
+        self.zoom_slider.setRange(0, self.ZOOM_STEPS)
+        self.zoom_slider.setFixedWidth(150)
+        self.zoom_slider.setToolTip(tr("Ingrandimento (doppio clic: 100%)"))
+        self.zoom_slider.setFocusPolicy(Qt.NoFocus)
+        self.zoom_slider.valueChanged.connect(self._on_zoom_slider)
+        self.zoom_slider.installEventFilter(self)              # doppio clic → 100%
+        self._zlog = math.log(self.ZOOM_MAX / self.ZOOM_MIN)
+        self.lbl_zoom = _ClickLabel("")
+        self.lbl_zoom.setMinimumWidth(48)
+        self.lbl_zoom.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.lbl_zoom.setToolTip(tr("Clic per scrivere la percentuale"))
+        self.lbl_zoom.clicked.connect(self.zoom_custom)
+        for w in (self.lbl_stats, self.lbl_page, self.zoom_slider, self.lbl_zoom):
+            sb.addPermanentWidget(w)
+        self.zoom_slider.setEnabled(False)
+        self._stats_key = None
+        self._stats_job = None
+        self._stats: Optional[object] = None
+        self._stats_timer = QTimer(self)
+        self._stats_timer.setInterval(0)
+        self._stats_timer.timeout.connect(self._stats_step)
+
+    def _zoom_to_slider(self, z: float) -> int:
+        import math
+        z = max(self.ZOOM_MIN, min(z, self.ZOOM_MAX))
+        return round(math.log(z / self.ZOOM_MIN) / self._zlog * self.ZOOM_STEPS)
+
+    def _on_zoom_changed(self, z: float) -> None:
+        self.lbl_zoom.setText(f"{z * 100:.0f}%")
+        self.zoom_slider.blockSignals(True)
+        self.zoom_slider.setValue(self._zoom_to_slider(z))
+        self.zoom_slider.blockSignals(False)
+
+    def _on_zoom_slider(self, v: int) -> None:
+        import math
+        if self.pdf is None:
+            return
+        z = self.ZOOM_MIN * math.exp(self._zlog * v / self.ZOOM_STEPS)
+        for snap in (0.5, 0.75, 1.0, 1.5, 2.0):                 # vicino ai valori tondi si aggancia
+            if abs(z / snap - 1) < 0.025:
+                z = snap
+        self.view.set_zoom(z)
+
+    @staticmethod
+    def _num(n: int) -> str:
+        from PySide6.QtCore import QLocale
+        loc = QLocale(QLocale.English) if i18n_lang() == "en" else QLocale(QLocale.Italian)
+        return loc.toString(int(n))
+
+    def _update_stats(self) -> None:
+        """Dimensione su disco subito; parole e caratteri ricalcolati a blocchi solo se il documento è cambiato."""
+        from . import docstats
+        doc = self.pdf
+        if doc is None or self.home_visible():
+            self._stats_timer.stop(); self._stats_job = None; self._stats_key = None
+            self.lbl_stats.setText("")
+            return
+        key = (id(doc), getattr(doc, "version", 0), doc.page_count)
+        if key != self._stats_key:
+            self._stats_key = key
+            self._stats = None
+            self._stats_job = docstats.iter_text_stats(doc.doc)
+            self._stats_timer.start()
+        self._show_stats_label()
+
+    def _stats_step(self) -> None:
+        if self._stats_job is None:
+            self._stats_timer.stop()
+            return
+        try:
+            self._stats = next(self._stats_job)
+        except StopIteration:
+            self._stats_job = None
+        except Exception:                                      # documento chiuso o sostituito durante il conteggio
+            self._stats_job = None; self._stats_key = None
+        if self._stats is not None and self._stats.done:
+            self._stats_job = None
+        if self._stats_job is None:
+            self._stats_timer.stop()
+        self._show_stats_label()
+
+    def _show_stats_label(self) -> None:
+        from . import compress, docstats
+        doc = self.pdf
+        if doc is None:
+            return
+        size = docstats.disk_size(doc.path)
+        parts = [compress.human_size(size) + ("*" if doc.modified else "") if size is not None else tr("non salvato")]
+        st = self._stats
+        if st is not None:
+            more = "" if st.done else "…"
+            parts.append((tr("{} parola") if st.words == 1 else tr("{} parole")).format(self._num(st.words)) + more)
+            parts.append((tr("{} carattere") if st.chars == 1 else tr("{} caratteri")).format(self._num(st.chars)) + more)
+        try:
+            parts.append(docstats.page_format(doc.doc[self.view.current_page()]))
+        except Exception:
+            pass
+        self.lbl_stats.setText("  ·  ".join(parts) + "   ")
+
+    def show_stats(self) -> None:
+        """Finestra con tutte le statistiche del documento."""
+        from . import compress, docstats
+        doc = self.pdf
+        if doc is None:
+            return
+        st = self._stats if self._stats is not None and self._stats.done and self._stats_key == (id(doc), getattr(doc, "version", 0), doc.page_count) \
+            else docstats.text_stats(doc.doc)
+        info = docstats.doc_info(doc.doc)
+        size = docstats.disk_size(doc.path)
+        rows = [
+            (tr("File"), doc.path or tr("non ancora salvato")),
+            (tr("Dimensione su disco"), (f"{compress.human_size(size)} ({self._num(size)} byte)" if size is not None else "—")
+             + (tr(" — modifiche non salvate") if doc.modified else "")),
+            (tr("Pagine"), self._num(doc.page_count)),
+            (tr("Formato della pagina corrente"), docstats.page_format(doc.doc[self.view.current_page()])),
+            (tr("Parole"), self._num(st.words)),
+            (tr("Caratteri (spazi inclusi)"), self._num(st.chars)),
+            (tr("Caratteri (spazi esclusi)"), self._num(st.chars_nospace)),
+            (tr("Righe di testo"), self._num(st.lines)),
+            (tr("Pagine senza testo"), self._num(st.pages - st.text_pages)
+             + (tr(" (probabilmente scansioni: il riconoscimento del testo le rende ricercabili)") if st.pages - st.text_pages else "")),
+            (tr("Immagini"), self._num(len(st.images))),
+            (tr("Font"), tr("{} incorporati, {} non incorporati").format(info["fonts_embedded"], info["fonts_missing"])),
+            (tr("Versione"), info["version"] or "—"),
+            (tr("Standard"), doc.standard or "—"),
+            (tr("Firme digitali"), self._num(doc.signed_count) if doc.is_signed else tr("nessuna")),
+        ]
+        html = "<table cellspacing='4'>" + "".join(
+            f"<tr><td><b>{k}</b></td><td>{str(v).replace('&', '&amp;').replace('<', '&lt;')}</td></tr>" for k, v in rows) + "</table>"
+        box = QMessageBox(self)
+        box.setWindowTitle(tr("Statistiche del documento"))
+        box.setTextFormat(Qt.RichText)
+        box.setText(html)
+        box.exec()
+
     def zoom_custom(self) -> None:
         v, ok = QInputDialog.getInt(self, tr("Ingrandimento"), tr("Percentuale:"), int(round(self.view.zoom * 100)), 10, 1600)
         if ok:
@@ -757,10 +970,15 @@ class MainWindow(QMainWindow):
             self.spin_page.setValue(self.view.current_page() + 1)
             self.spin_page.blockSignals(False)
             self.lbl_total.setText(f" / {self.pdf.page_count} ")
+            self.lbl_zoom.setText(f"{self.view.zoom * 100:.0f}%")
         else:
             self.lbl_page.setText("")
+            self.lbl_zoom.setText("")
             self.spin_page.blockSignals(True); self.spin_page.setRange(0, 0); self.spin_page.blockSignals(False)
             self.lbl_total.setText(" / 0 ")
+        self.zoom_slider.setEnabled(has and not self.home_visible())
+        self.zoom_slider.setVisible(has and not self.home_visible())
+        self._update_stats()
 
     def _rebuild_recent(self) -> None:
         if self.home_visible():
@@ -960,7 +1178,7 @@ class MainWindow(QMainWindow):
                 self.open_path(u.toLocalFile())
 
     def merge_dialog(self, files: Optional[list] = None, out: Optional[str] = None, items: Optional[list] = None,
-                     bookmarks: bool = True, open_after: bool = True) -> Optional[str]:
+                     bookmarks: bool = True, open_after: bool = True, meta_from: Optional[int] = None) -> Optional[str]:
         """Unione in batch. Con `items` e `out` lavora senza finestra (uso da script e test)."""
         from . import merge as mg
         if items is None:
@@ -969,9 +1187,10 @@ class MainWindow(QMainWindow):
             if dlg.exec() != MergeDialog.Accepted:
                 return None
             items, out, bookmarks, open_after = dlg.items(), dlg.out_path, dlg.bookmarks.isChecked(), dlg.open_after.isChecked()
+            meta_from = dlg.meta_from()
         pd, cb = self._progress(tr("Unione in corso…"), len(items))
         try:
-            n = mg.merge_pdfs(items, out, bookmarks, cb)
+            n = mg.merge_pdfs(items, out, bookmarks, cb, meta_from=meta_from)
         except Exception as e:
             pd.close()
             if str(e) != "Operazione annullata":
@@ -1013,13 +1232,12 @@ class MainWindow(QMainWindow):
         ina = win.darker(135) if dark else win.darker(112)
         fg_i = pal.windowText().color()
         self.tabbar.setStyleSheet(
-            f"QTabBar::tab {{ background: {ina.name()}; color: {fg_i.name()}; padding: 6px 10px 6px 16px; margin-right: 4px;"
+            f"QTabBar::tab {{ background: {ina.name()}; color: {fg_i.name()}; padding: 6px 2px 6px 16px; margin-right: 4px;"
             f" border: 1px solid {win.darker(150).name()}; border-bottom: none;"
             f" border-top-left-radius: 9px; border-top-right-radius: 9px; }}"
             f"QTabBar::tab:selected {{ background: {act.name()}; color: {'#ffffff' if dark else '#000000'}; font-weight: bold;"
             f" border-top: 3px solid {hi}; }}"
-            f"QTabBar::tab:!selected:hover {{ background: {ina.lighter(112).name()}; }}"
-            f"QTabBar::close-button {{ subcontrol-position: right; margin-left: 10px; margin-right: 2px; }}")
+            f"QTabBar::tab:!selected:hover {{ background: {ina.lighter(112).name()}; }}")
 
     def _sync_tabs(self) -> None:
         """Aggiorna titoli e suggerimenti delle schede (asterisco = modifiche non salvate)."""
@@ -1053,6 +1271,33 @@ class MainWindow(QMainWindow):
         if n > 1:
             self.tabbar.setCurrentIndex((self.tabbar.currentIndex() + d) % n)
 
+    def _tab_close_button(self) -> QWidget:
+        """Pulsante «×» della scheda, dentro un contenitore con margine: resta all'interno della linguetta, lontano dal
+        bordo arrotondato (il pulsante standard di Qt si appoggia al bordo e ignora i margini del foglio di stile)."""
+        box = QWidget()
+        box.setAttribute(Qt.WA_TranslucentBackground)
+        hl = QHBoxLayout(box)
+        hl.setContentsMargins(6, 0, 8, 0)
+        b = QToolButton(box)
+        b.setObjectName("tabClose")
+        b.setText("×")
+        b.setAutoRaise(True)
+        b.setFixedSize(18, 18)
+        b.setCursor(Qt.PointingHandCursor)
+        b.setToolTip(tr("Chiudi la scheda"))
+        b.setFocusPolicy(Qt.NoFocus)
+        b.setStyleSheet("QToolButton#tabClose { border: none; border-radius: 9px; font-size: 15px; font-weight: bold; padding: 0 0 2px 0; }"
+                        "QToolButton#tabClose:hover { background: #d9534f; color: white; }")
+
+        def close() -> None:
+            for i in range(self.tabbar.count()):
+                if self.tabbar.tabButton(i, QTabBar.RightSide) is box:
+                    self.tabbar.tabCloseRequested.emit(i)
+                    return
+        b.clicked.connect(close)
+        hl.addWidget(b)
+        return box
+
     def _on_tab_close(self, i: int) -> None:
         if 0 <= i < len(self.docs):
             self._close_index(i)
@@ -1065,6 +1310,7 @@ class MainWindow(QMainWindow):
         self._tab_lock = True
         try:
             i = self.tabbar.insertTab(pos, self._doc_label(doc).replace("&", "&&"))
+            self.tabbar.setTabButton(i, QTabBar.RightSide, self._tab_close_button())
             self.tabbar.setCurrentIndex(i)
         finally:
             self._tab_lock = False
@@ -1920,6 +2166,9 @@ class MainWindow(QMainWindow):
         """Esc: chiude le tendine aperte; altrimenti annulla l'operazione in corso e riporta allo strumento Seleziona."""
         if self.menus.panels:
             self.menus.close_all()
+            return
+        if self.isFullScreen() and self.tool == "select":     # niente da annullare: si esce dallo schermo intero
+            self.toggle_fullscreen(False)
             return
         self.view._cancel_drag()
         self.set_tool("select")

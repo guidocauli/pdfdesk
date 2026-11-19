@@ -224,6 +224,7 @@ class DocView(QGraphicsView):
     contextRequested = Signal(int, QPointF, object)    # pagina, punto (coordinate pagina), posizione globale del menu
     imageRotateRequested = Signal(int, float)          # pagina, gradi (in senso orario) della rotazione fatta col mouse
     rotateModeChanged = Signal(bool)
+    backgroundDoubleClicked = Signal()                 # doppio clic fuori dalle pagine (schermo intero)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -1244,6 +1245,10 @@ class DocView(QGraphicsView):
                 if obj is not None:
                     self.contentDoubleClicked.emit(pno, obj)
                     return
+        if e.button() == Qt.LeftButton and self.tool in ("select", "editobj", "hand", "textsel") \
+                and (not self.doc or self._page_at(self.mapToScene(e.position().toPoint()), nearest=False) < 0):
+            self.backgroundDoubleClicked.emit()                # sfondo grigio attorno alle pagine
+            return
         super().mouseDoubleClickEvent(e)
 
     def _remove_preview(self) -> None:

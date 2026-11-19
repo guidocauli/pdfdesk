@@ -2136,6 +2136,11 @@ class MergeDialog(QDialog):
         bb0 = QPushButton(tr("Sfoglia…")); bb0.clicked.connect(self._browse)
         orow.addWidget(self.out, 1); orow.addWidget(bb0)
         f.addRow(tr("PDF finale"), orow)
+        self.meta = QComboBox()
+        self.meta.setToolTip(tr("Titolo, autore, oggetto, parole chiave e metadati XMP del PDF unito vengono copiati dal "
+                                "file scelto. Le dichiarazioni PDF/A e PDF/X non si copiano: il file unito non è stato "
+                                "verificato come conforme."))
+        f.addRow(tr("Metadati da"), self.meta)
         self.bookmarks = QCheckBox(tr("Aggiungi un segnalibro per ogni file sorgente (con sotto i suoi segnalibri)")); self.bookmarks.setChecked(True)
         self.open_after = QCheckBox(tr("Apri il risultato dopo l'unione")); self.open_after.setChecked(True)
         f.addRow(self.bookmarks); f.addRow(self.open_after)
@@ -2165,7 +2170,7 @@ class MergeDialog(QDialog):
             QMessageBox.warning(self, tr("Unisci PDF"), str(e))
             return False
         it = QListWidgetItem()
-        it.setData(Qt.UserRole, {"path": path, "pages": "", "password": pw, "count": info["pages"]})
+        it.setData(Qt.UserRole, {"path": path, "pages": "", "password": pw, "count": info["pages"], "meta": info.get("meta") or {}})
         self.list.addItem(it)
         self._label(it)
         self._refresh()
@@ -2240,7 +2245,54 @@ class MergeDialog(QDialog):
         self._refresh()
 
     def items(self) -> list:
-        return [{k: v for k, v in self.list.item(i).data(Qt.UserRole).items() if k != "count"} for i in range(self.list.count())]
+        return [{k: v for k, v in self.list.item(i).data(Qt.UserRole).items() if k not in ("count", "meta")}
+                for i in range(self.list.count())]
+
+    def _with_meta(self) -> list:
+        """(posizione, percorso, metadati) dei file dell'elenco che hanno metadati, nell'ordine attuale."""
+        out = []
+        for i in range(self.list.count()):
+            d = self.list.item(i).data(Qt.UserRole)
+            if d.get("meta"):
+                out.append((i, d["path"], d["meta"]))
+        return out
+
+    @staticmethod
+    def _meta_label(path: str, meta: dict) -> str:
+        bits = [meta.get("title"), meta.get("author")]
+        desc = " — ".join(b for b in bits if b)
+        return os.path.basename(path) + (f"  («{desc[:60]}»)" if desc else "")
+
+    def _refresh_meta(self) -> None:
+        """Voci: automatico (primo PDF dell'elenco con metadati), ogni file con metadati, nessuno. La scelta segue il
+        file anche quando l'elenco viene riordinato."""
+        keep = self.meta.currentData()
+        wm = self._with_meta()
+        self.meta.blockSignals(True)
+        self.meta.clear()
+        if wm:
+            self.meta.addItem(tr("Automatico, primo PDF dell'elenco con metadati: {}").format(self._meta_label(wm[0][1], wm[0][2])), None)
+            for _i, p, m in wm:
+                self.meta.addItem(self._meta_label(p, m), p)
+        else:
+            self.meta.addItem(tr("Nessun file dell'elenco ha metadati"), None)
+        self.meta.addItem(tr("Nessuno (PDF unito senza metadati)"), "-")
+        k = self.meta.findData(keep) if keep is not None else 0
+        self.meta.setCurrentIndex(k if k >= 0 else 0)
+        self.meta.setEnabled(bool(wm))
+        self.meta.blockSignals(False)
+
+    def meta_from(self) -> Optional[int]:
+        """Indice per merge_pdfs: None = automatico, -1 = nessuno."""
+        v = self.meta.currentData()
+        if v is None:
+            return None
+        if v == "-":
+            return -1
+        for i in range(self.list.count()):
+            if self.list.item(i).data(Qt.UserRole)["path"] == v:
+                return i
+        return None
 
     def total_pages(self) -> int:
         from .export import parse_pages
@@ -2256,6 +2308,8 @@ class MergeDialog(QDialog):
     def _refresh(self, *_a) -> None:
         self.summary.setText(tr("{} file, {} pagine nel PDF finale").format(self.list.count(), self.total_pages()))
         self.bb.button(QDialogButtonBox.Ok).setEnabled(self.list.count() > 0)
+        if hasattr(self, "meta"):
+            self._refresh_meta()
 
     def _browse(self) -> None:
         p, _ = QFileDialog.getSaveFileName(self, tr("Salva PDF unito"), self.out.text(), tr("PDF (*.pdf)"))

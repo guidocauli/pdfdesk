@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Callable, Optional
 
 import pymupdf as fitz
@@ -25,10 +26,56 @@ def probe(path: str, password: str = "") -> dict:
         raise MergeError(f"{os.path.basename(path)}: {e}") from e
     try:
         if d.needs_pass and not d.authenticate(password):
-            return {"pages": 0, "locked": True, "size": os.path.getsize(path)}
-        return {"pages": d.page_count, "locked": False, "size": os.path.getsize(path)}
+            return {"pages": 0, "locked": True, "size": os.path.getsize(path), "meta": {}}
+        return {"pages": d.page_count, "locked": False, "size": os.path.getsize(path), "meta": _doc_meta(d)}
     finally:
         d.close()
+
+
+# chiavi del dizionario Info che si copiano nel PDF unito (formato e cifratura dipendono dal file nuovo)
+META_KEYS = ("title", "author", "subject", "keywords", "creator", "producer", "creationDate", "modDate", "trapped")
+
+
+def _doc_meta(d: fitz.Document) -> dict:
+    """Metadati presenti in un PDF (vuoto per le immagini o se non ce ne sono). Producer e date da sole non contano:
+    li scrivono quasi tutti i programmi e non descrivono il documento."""
+    if not d.is_pdf:
+        return {}
+    m = {k: v for k, v in (d.metadata or {}).items() if k in META_KEYS and v}
+    try:
+        xmp = d.get_xml_metadata() or ""
+    except Exception:
+        xmp = ""
+    if not any(m.get(k) for k in ("title", "author", "subject", "keywords")) and "dc:" not in xmp:
+        return {}
+    if xmp:
+        m["_xmp"] = True
+    return m
+
+
+_XMP_STD = [re.compile(p, re.S) for p in (
+    r'\s(pdfaid|pdfxid|pdfx|pdfuaid):[A-Za-z_]+="[^"]*"',                  # forma ad attributo
+    r'<(pdfaid|pdfxid|pdfx|pdfuaid):([A-Za-z_]+)>.*?</\1:\2>',              # forma a elemento
+    r'<(pdfaid|pdfxid|pdfx|pdfuaid):[A-Za-z_]+\s*/>')]
+
+
+def _strip_conformance(xmp: str) -> str:
+    """Toglie dichiarazioni PDF/A, PDF/X, PDF/UA: il file unito non è stato verificato come conforme."""
+    for rx in _XMP_STD:
+        xmp = rx.sub("", xmp)
+    return xmp
+
+
+def _copy_meta(src: fitz.Document, out: fitz.Document) -> None:
+    m = {k: v for k, v in (src.metadata or {}).items() if k in META_KEYS and v}
+    m["modDate"] = fitz.get_pdf_now()
+    out.set_metadata(m)
+    try:
+        xmp = src.get_xml_metadata() or ""
+    except Exception:
+        xmp = ""
+    if xmp.strip():
+        out.set_xml_metadata(_strip_conformance(xmp))
 
 
 def _open_source(path: str, password: str) -> fitz.Document:
@@ -61,24 +108,33 @@ def _fix_levels(toc: list) -> list:
 
 
 def merge_pdfs(items: list[dict], out_path: str, bookmarks: bool = True,
-               progress: Optional[Callable[[int, int], bool]] = None, title: str = "") -> int:
+               progress: Optional[Callable[[int, int], bool]] = None, title: str = "",
+               meta_from: Optional[int] = None) -> int:
     """Unisce `items` nell'ordine dato.
 
     Ogni voce: {"path": str, "pages": "1-3,5" (vuoto = tutte), "password": str}.
+    `meta_from`: indice della voce da cui copiare i metadati (Info e XMP; le dichiarazioni PDF/A-X-UA si tolgono);
+    None = il primo PDF dell'elenco che ha metadati; -1 = nessuno. `title`, se dato, sostituisce il titolo.
     `bookmarks`: aggiunge un segnalibro per ogni file sorgente, con sotto i segnalibri originali del file; senza, i
     segnalibri originali restano al loro livello. In entrambi i casi puntano alle pagine giuste del documento unito
     (quelli di pagine non incluse vengono tolti). Restituisce il numero di pagine scritte.
     """
     if not items:
         raise MergeError(tr("Nessun file da unire"))
+    if meta_from is not None and meta_from >= len(items):
+        raise MergeError(tr("Il file scelto per i metadati non è nell'elenco"))
     out = fitz.open()
     toc, n = [], len(items)
+    meta_done = meta_from == -1
     try:
         for i, it in enumerate(items):
             if progress and progress(i, n) is False:
                 raise MergeError(tr("Operazione annullata"))
             src = _open_source(it["path"], it.get("password", ""))
             try:
+                if not meta_done and (i == meta_from or (meta_from is None and _doc_meta(src))):
+                    _copy_meta(src, out)                 # anche se poi nessuna pagina del file viene inclusa
+                    meta_done = True
                 try:
                     pages = parse_pages(it.get("pages", "") or "", src.page_count)
                 except ValueError as e:
@@ -129,7 +185,9 @@ def merge_pdfs(items: list[dict], out_path: str, bookmarks: bool = True,
         if toc:
             out.set_toc(toc)
         if title:
-            out.set_metadata({"title": title})
+            m = out.metadata or {}
+            m["title"] = title
+            out.set_metadata({k: v for k, v in m.items() if k in META_KEYS})
         # garbage=4: unisce anche i flussi identici (stesso font o immagine presenti in più file sorgente)
         out.save(out_path, garbage=4, deflate=True)
         if progress:

@@ -29,6 +29,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--icc", metavar="FILE", help="con --standard pdfx-*: profilo ICC di stampa (CMYK)")
     p.add_argument("--check", metavar="FILE", help="verifica la conformità di un PDF allo standard di --standard (o a quello dichiarato)")
     p.add_argument("--merge", nargs="+", metavar=("OUTPUT", "INPUT"), help="unisce i PDF/immagini INPUT (nell'ordine dato) in OUTPUT")
+    p.add_argument("--meta-from", type=int, metavar="N",
+                   help="con --merge: copia i metadati dall'N-esimo file (1 = il primo; 0 = nessuno). "
+                        "Predefinito: il primo PDF dell'elenco che ha metadati")
     p.add_argument("--translate", nargs="+", metavar="FILE", help="traduce i PDF nella lingua di --to (crea NOME_translated_LINGUA.pdf)")
     p.add_argument("--to", metavar="LINGUA", help="con --translate: lingua di destinazione (codice ISO, es. en, it, de)")
     p.add_argument("--from", dest="src", metavar="LINGUA", help="con --translate: lingua di partenza (se assente viene rilevata)")
@@ -141,8 +144,12 @@ def main(argv=None) -> int:
         if len(args.merge) < 2:
             print(f"{VERSION_LINE}\nERRORE: --merge richiede OUTPUT e almeno un file da unire", file=sys.stderr)
             return 3
+        mf = None if args.meta_from is None else (-1 if args.meta_from == 0 else args.meta_from - 1)
+        if mf is not None and not -1 <= mf < len(args.merge) - 1:
+            print(f"{VERSION_LINE}\nERRORE: --meta-from deve essere tra 0 e {len(args.merge) - 1}", file=sys.stderr)
+            return 3
         try:
-            n = merge.merge_pdfs([{"path": f} for f in args.merge[1:]], args.merge[0])
+            n = merge.merge_pdfs([{"path": f} for f in args.merge[1:]], args.merge[0], meta_from=mf)
         except merge.MergeError as e:
             print(f"{VERSION_LINE}\nERRORE: {e}", file=sys.stderr)
             return 3

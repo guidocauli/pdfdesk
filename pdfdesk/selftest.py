@@ -201,7 +201,7 @@ def run() -> int:
     def modules():
         import importlib.util
         names = ("compress", "core", "export", "export_fixed", "extract", "fonts", "imgutil", "merge", "parallel", "paths", "pdfstd",
-                 "scan", "signing", "sigstore", "textbox", "updater", "selftest", "cli", "shutdown", "crashlog", "net", "home", "translate", "translate_ui", "view", "dialogs", "mainwindow", "icons", "theme", "printing", "inmenu", "i18n", "i18n_en")
+                 "scan", "signing", "sigstore", "textbox", "updater", "selftest", "cli", "shutdown", "crashlog", "net", "docstats", "home", "translate", "translate_ui", "view", "dialogs", "mainwindow", "icons", "theme", "printing", "inmenu", "i18n", "i18n_en")
         missing = [n for n in names if importlib.util.find_spec("pdfdesk." + n) is None]   # senza importarli (alcuni richiedono Qt)
         assert not missing, "moduli assenti dal pacchetto: " + ", ".join(missing)       # es. scartati dalla compilazione per sintassi non valida
         from . import net                       # certificati per le connessioni HTTPS: archivio del sistema e certifi

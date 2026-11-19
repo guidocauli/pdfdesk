@@ -55,7 +55,7 @@ cd pdfdesk-<versione>
 sudo ./install.sh --system   # per tutti gli utenti (/opt/pdfdesk)
 ```
 
-Lo script aggiunge la voce nel menu delle applicazioni, l'associazione ai PDF e le icone. Per aggiornare si lancia `install.sh` del pacchetto nuovo. Per rimuovere: `~/.local/share/pdfdesk/uninstall.sh` (oppure `sudo /opt/pdfdesk/uninstall.sh --system`).
+Lo script aggiunge la voce nel menu delle applicazioni, l'associazione ai PDF e le icone. Il file `pdfdesk.desktop.in` del pacchetto è il modello da cui lo script crea la voce del menu: non si apre direttamente. Per aggiornare si lancia `install.sh` del pacchetto nuovo. Per rimuovere: `~/.local/share/pdfdesk/uninstall.sh` (oppure `sudo /opt/pdfdesk/uninstall.sh --system`).
 
 Librerie di sistema richieste da Qt (di solito già presenti in un desktop):
 
@@ -97,6 +97,8 @@ Ricompare quando si chiude l'ultimo documento; si può disattivare all'avvio in 
 - Più PDF aperti insieme, uno per scheda; ogni scheda ricorda zoom, posizione e cronologia di annulla.
 - Scorrimento continuo, zoom (Ctrl+rotella, adatta alla larghezza o alla pagina), miniature, ricerca nel testo (Ctrl+F).
 - PDF protetti da password, apertura con trascina e rilascia.
+- Barra di stato: dimensione su disco, parole, caratteri e formato della pagina, con un clic per tutte le statistiche (righe, pagine senza testo, immagini, font, versione, firme). In basso a destra, cursore dello zoom accanto alla percentuale (doppio clic sul cursore: 100%; clic sulla percentuale per scriverla).
+- Schermo intero con F11 o con doppio clic su una zona libera della finestra (barre, sfondo attorno alle pagine); si esce allo stesso modo o con Esc.
 
 ### Annotazioni e disegno
 - Penna, evidenziatore, linee, frecce, rettangoli ed ellissi, con colore, spessore e opacità.
@@ -117,7 +119,7 @@ Ricompare quando si chiude l'ultimo documento; si può disattivare all'avvio in 
 ### Pagine
 - Riordino trascinando le miniature, rotazione, duplicazione, eliminazione.
 - Inserimento di pagine vuote o da un altro PDF, estrazione in un nuovo PDF.
-- **Unisci PDF**: unisce PDF e immagini in un unico file, con scelta delle pagine di ogni sorgente e un segnalibro per ogni file.
+- **Unisci PDF**: unisce PDF e immagini in un unico file, con scelta delle pagine di ogni sorgente e un segnalibro per ogni file. I metadati (titolo, autore, oggetto, parole chiave, XMP) si prendono dal file scelto in *Metadati da*; se non si sceglie, dal primo PDF dell'elenco che ne ha. Le dichiarazioni PDF/A e PDF/X non vengono copiate. Da riga di comando: `--merge USCITA FILE… --meta-from N`.
 
 ### Moduli
 - Compilazione dei moduli **AcroForm**: testo, multiriga, caselle, opzioni, menu e liste, campi firma.

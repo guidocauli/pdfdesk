@@ -206,5 +206,74 @@ class MergeSizeTests(unittest.TestCase):
         self.assertLess(os.path.getsize(e), os.path.getsize(a))
 
 
+def mkmeta(name, title, author, pdfa=False):
+    p = os.path.join(TMP, name); d = fitz.open(); d.new_page().insert_text((72, 100), name)
+    d.set_metadata({"title": title, "author": author, "subject": "sogg " + title, "keywords": "k1, k2"})
+    xmp = ('<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF '
+           'xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="" '
+           'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:pdfaid="http://www.aiim.org/pdfa/ns/id/"'
+           + (' pdfaid:part="2" pdfaid:conformance="B"' if pdfa else "")
+           + f'><dc:title><rdf:Alt><rdf:li xml:lang="x-default">{title}</rdf:li></rdf:Alt></dc:title>'
+           + ('<pdfaid:part>2</pdfaid:part>' if pdfa else "")
+           + '</rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>')
+    d.set_xml_metadata(xmp); d.save(p); d.close(); return p
+
+
+class MergeMetadataTests(unittest.TestCase):
+    def setUp(self):
+        self.plain = mkpdf("senza.pdf", ["x"])                       # nessun metadato descrittivo
+        self.a = mkmeta("ma.pdf", "Titolo A", "Autore A")
+        self.b = mkmeta("mb.pdf", "Titolo B", "Autore B", pdfa=True)
+        self.out = os.path.join(TMP, "meta-out.pdf")
+
+    def meta(self):
+        d = fitz.open(self.out); m = d.metadata; x = d.get_xml_metadata(); d.close(); return m, x
+
+    def test_probe(self):
+        self.assertEqual(merge.probe(self.plain)["meta"], {})
+        self.assertEqual(merge.probe(self.a)["meta"]["title"], "Titolo A")
+        self.assertEqual(merge.probe(mkimg("mi.png"))["meta"], {})
+
+    def test_automatico_primo_pdf_con_metadati(self):
+        merge.merge_pdfs([{"path": mkimg("mi.png")}, {"path": self.plain}, {"path": self.a}, {"path": self.b}], self.out)
+        m, x = self.meta()
+        self.assertEqual((m["title"], m["author"], m["keywords"]), ("Titolo A", "Autore A", "k1, k2"))
+        self.assertIn("Titolo A", x)
+
+    def test_scelta_esplicita_e_conformita_tolta(self):
+        merge.merge_pdfs([{"path": self.a}, {"path": self.b}], self.out, meta_from=1)
+        m, x = self.meta()
+        self.assertEqual(m["title"], "Titolo B")
+        self.assertIn("Titolo B", x)
+        self.assertNotIn("pdfaid:part", x)
+        self.assertNotIn("pdfaid:conformance", x)
+
+    def test_nessuno_e_titolo(self):
+        merge.merge_pdfs([{"path": self.a}], self.out, meta_from=-1)
+        self.assertFalse(self.meta()[0].get("title"))
+        merge.merge_pdfs([{"path": self.a}], self.out, title="Nuovo")
+        m, _ = self.meta()
+        self.assertEqual((m["title"], m["author"]), ("Nuovo", "Autore A"))
+        with self.assertRaises(merge.MergeError):
+            merge.merge_pdfs([{"path": self.a}], self.out, meta_from=3)
+
+    def test_dialogo_segue_il_file(self):
+        dlg = dialogs.MergeDialog(None, [self.plain, self.a, self.b])
+        self.assertTrue(dlg.meta.isEnabled())
+        self.assertIsNone(dlg.meta_from())                           # automatico
+        self.assertIn("ma.pdf", dlg.meta.itemText(0))
+        dlg.meta.setCurrentIndex(dlg.meta.findData(self.b))
+        self.assertEqual(dlg.meta_from(), 2)
+        dlg.reverse()                                                # l'ordine cambia, la scelta resta su mb.pdf
+        self.assertEqual(dlg.meta_from(), 0)
+        self.assertIn("mb.pdf", dlg.meta.itemText(0))                # automatico ora indica il primo con metadati
+        dlg.meta.setCurrentIndex(dlg.meta.findData("-"))
+        self.assertEqual(dlg.meta_from(), -1)
+        self.assertNotIn("meta", dlg.items()[0])
+        dlg2 = dialogs.MergeDialog(None, [self.plain])
+        self.assertFalse(dlg2.meta.isEnabled())
+        dlg.deleteLater(); dlg2.deleteLater()
+
+
 if __name__ == "__main__":
     unittest.main()

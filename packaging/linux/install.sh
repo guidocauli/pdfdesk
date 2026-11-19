@@ -38,8 +38,25 @@ for s in 16 32 48 64 128 256 512; do
   fi
 done
 [ -f "$HERE/icons/pdfdesk.svg" ] && install -m 644 "$HERE/icons/pdfdesk.svg" "$SHARE/icons/hicolor/scalable/apps/pdfdesk.svg"
-sed "s|@EXEC@|$APPDIR/pdfdesk|g" "$HERE/pdfdesk.desktop" > "$SHARE/applications/pdfdesk.desktop"
-chmod 644 "$SHARE/applications/pdfdesk.desktop"
+# voce del menu: il modello pdfdesk.desktop.in diventa pdfdesk.desktop con il percorso reale del programma.
+# In Exec il percorso va tra virgolette (può contenere spazi) con \ " ` $ protetti; TryExec vuole il percorso così com'è.
+TEMPLATE="$HERE/pdfdesk.desktop.in"
+[ -f "$TEMPLATE" ] || TEMPLATE="$HERE/pdfdesk.desktop"          # pacchetti fino alla 0.7.16
+EXE="$APPDIR/pdfdesk"
+# 1) tra virgolette: \ " ` $ preceduti da «\»;  2) le stringhe del file .desktop raddoppiano a loro volta ogni «\»
+Q=$(printf '%s' "$EXE" | sed -e 's/[\\"`$]/\\&/g' -e 's/\\/\\\\/g')
+DESKTOP="$SHARE/applications/pdfdesk.desktop"
+TMPD="$DESKTOP.tmp"
+while IFS= read -r line || [ -n "$line" ]; do
+  case "$line" in                        # printf inserisce i percorsi alla lettera (nessuna sostituzione di bash o sed)
+    Exec=*)    printf 'Exec="%s" %%F\n' "$Q" ;;
+    TryExec=*) printf 'TryExec=%s\n' "$(printf '%s' "$EXE" | sed 's/\\/\\\\/g')" ;;
+    *)         printf '%s\n' "$line" ;;
+  esac
+done < "$TEMPLATE" > "$TMPD"
+if grep -q '@EXEC' "$TMPD"; then rm -f "$TMPD"; echo "Errore: voce del menu non generata correttamente"; exit 1; fi
+chmod 644 "$TMPD" && mv -f "$TMPD" "$DESKTOP"
+command -v desktop-file-validate >/dev/null && { desktop-file-validate "$DESKTOP" || echo "Avviso: desktop-file-validate segnala problemi in $DESKTOP"; }
 command -v update-desktop-database >/dev/null && update-desktop-database "$SHARE/applications" 2>/dev/null || true
 command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q -t -f "$SHARE/icons/hicolor" 2>/dev/null || true
 command -v kbuildsycoca6 >/dev/null && kbuildsycoca6 >/dev/null 2>&1 || true
