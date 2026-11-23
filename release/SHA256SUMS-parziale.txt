@@ -1,0 +1,4 @@
+2869de81ff8863875d85756aa5fcb7263ad7aeafe971b3c1099c5ed43fcc2ae5  pdfdesk-0.7.19-windows-x86_64-setup.exe
+af3f5a4748880a6c3819af537d3d4cb8ee09060448d4e7cda867b70dd860c50b  pdfdesk-0.7.19-windows-x86_64.zip
+feec486b6e4754cf9a2aca8885b3eb4a6e158629ca3a95a13079f6b36ce9555d  pdfdesk-0.7.19-linux-x86_64.tar.gz
+f5dc541a677f5e1f358c50e01d5f3f99789850908dd02e8a997dff87f8222884  pdfdesk-0.7.19-sorgenti.tar.gz

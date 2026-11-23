@@ -1,12 +1,24 @@
 # PDFDesk — Guido Cauli <guido.cauli@gmail.com>
 # Compila e collauda l'eseguibile per macOS Apple Silicon (l'unico che non si può compilare altrove). Windows e Linux si compilano
-# sul computer di sviluppo (vedi README) e le Release si pubblicano a mano con quei pacchetti, più lo zip macOS prodotto qui.
-# macOS Intel non è compilato: cryptography 50 non ha più pacchetti per macOS x86_64. Python 3.11 e moduli di requirements.lock.
+# sul computer di sviluppo (vedi COMPILARE.md) con le stesse versioni di Python e dei moduli (requirements.lock).
+# macOS Intel non è compilato: cryptography 50 non ha più pacchetti per macOS x86_64.
+#
 # Avvio: manuale (Actions → build → Run workflow) oppure push di un tag v*. Il risultato è l'artefatto «pdfdesk-macos-arm64».
+# Con «pubblica» attivo prepara anche la Release come BOZZA (tag v<versione>, creato quando la si pubblica):
+#   - note di rilascio da release/RELEASE_NOTES.md;
+#   - allegati: lo zip macOS appena compilato, release/pdfdesk-<versione>-sorgenti.tar.gz e SHA256SUMS-<versione>.txt
+#     (le somme di release/SHA256SUMS-parziale.txt, cioè Windows, Linux e sorgenti, più quella dello zip macOS);
+#   - restano da trascinare nella bozza i pacchetti Windows e Linux (oltre 100 MB, non passano dal repository); poi «Publish».
+# Finché è una bozza la Release non è visibile e il controllo degli aggiornamenti non la segnala.
 name: build
 on:
   push: { tags: ["v*"] }
   workflow_dispatch:
+    inputs:
+      pubblica:
+        description: "Prepara la Release (bozza) con lo zip macOS, i sorgenti e le somme SHA-256"
+        type: boolean
+        default: false
 permissions: { contents: read }
 jobs:
   macos-arm64:
@@ -44,3 +56,39 @@ jobs:
         with:
           name: pdfdesk-macos-arm64
           path: out/*
+
+  release:
+    needs: macos-arm64
+    if: github.event_name == 'workflow_dispatch' && inputs.pubblica
+    runs-on: ubuntu-latest
+    permissions: { contents: write }       # solo questo passo può creare la Release
+    env: { GH_TOKEN: "${{ github.token }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: pdfdesk-macos-arm64, path: out }
+      - name: Controlli
+        run: |
+          VER=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' pdfdesk/__init__.py)
+          echo "VER=$VER" >> "$GITHUB_ENV"
+          test -f release/RELEASE_NOTES.md || { echo "::error::manca release/RELEASE_NOTES.md"; exit 1; }
+          grep -q -- "— $VER" release/RELEASE_NOTES.md || { echo "::error::le note di rilascio non sono della versione $VER"; exit 1; }
+          test -f "release/pdfdesk-$VER-sorgenti.tar.gz" || { echo "::error::manca release/pdfdesk-$VER-sorgenti.tar.gz"; exit 1; }
+          test -f "out/pdfdesk-$VER-macos-arm64.zip" || { echo "::error::manca lo zip macOS $VER"; exit 1; }
+          # i sorgenti allegati devono essere proprio quelli delle somme già calcolate
+          (cd release && grep " pdfdesk-$VER-sorgenti.tar.gz$" SHA256SUMS-parziale.txt | sha256sum -c -)
+          if gh release view "v$VER" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "::error::la Release v$VER esiste già (anche come bozza): non la sovrascrivo"; exit 1
+          fi
+      - name: Somme SHA-256
+        run: |
+          cp release/SHA256SUMS-parziale.txt "SHA256SUMS-$VER.txt"
+          (cd out && sha256sum "pdfdesk-$VER-macos-arm64.zip") >> "SHA256SUMS-$VER.txt"
+          cat "SHA256SUMS-$VER.txt"
+      - name: Release (bozza)
+        run: |
+          gh release create "v$VER" -R "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \
+            --title "PDFDesk $VER" --notes-file release/RELEASE_NOTES.md \
+            "out/pdfdesk-$VER-macos-arm64.zip" "release/pdfdesk-$VER-sorgenti.tar.gz" "SHA256SUMS-$VER.txt"
+          echo "### Bozza della Release v$VER pronta" >> "$GITHUB_STEP_SUMMARY"
+          echo "Trascina i pacchetti Windows e Linux nella bozza, poi «Publish release»." >> "$GITHUB_STEP_SUMMARY"

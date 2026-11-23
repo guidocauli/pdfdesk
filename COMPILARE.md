@@ -70,6 +70,16 @@ Le icone si rigenerano con `python packaging/make_icons.py` (cartella `packaging
 
 Usa la chiave privata `packaging/signing/pdfdesk-sign.key`, che non è nel repository, e richiede `osslsigncode`. `build_installer.sh` firma da solo eseguibile e installatore. Il certificato pubblico è `packaging/windows/pdfdesk-sign.cer`.
 
+### Release su GitHub
+
+1. Compilare Windows e Linux, creare lo zip Windows e `./make_sources.sh`; scrivere le note in `dist/RELEASE_NOTES-<versione>.md`.
+2. `./prepara_release.sh`: copia in `release/` le note, l'archivio dei sorgenti e le somme SHA-256 di Windows, Linux e sorgenti (`SHA256SUMS-parziale.txt`). La cartella `release/` va nel repository.
+3. Caricare il codice e avviare *Actions → build → Run workflow* con **pubblica** attivo (oppure `gh workflow run build.yml -f pubblica=true`).
+4. La build compila e collauda macOS, poi crea la Release come **bozza** `v<versione>`, con le note, lo zip macOS, i sorgenti e `SHA256SUMS-<versione>.txt` completo.
+5. Nella bozza si trascinano i tre pacchetti Windows e Linux e si preme **Publish release**. Finché è una bozza la Release non è visibile e il controllo degli aggiornamenti non la segnala.
+
+La procedura si ferma con un errore, senza toccare nulla, se la Release della versione esiste già, se le note non sono della versione giusta o se l'archivio dei sorgenti non corrisponde alle somme.
+
 ## Test
 
 ```bash
