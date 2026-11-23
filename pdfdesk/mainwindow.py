@@ -275,6 +275,9 @@ class MainWindow(QMainWindow):
         self.a_translate = A(tr("&Traduci PDF…"), self.translate_dialog, tr("Ctrl+Shift+T"),
                              tr("Traduce il documento aperto o più PDF in un'altra lingua"))
         self.a_translate.setIcon(icon("translate"))
+        self.a_ocr = A(tr("Rendi ricercabile (&OCR)…"), lambda: self.ocr_dialog(), tr("Ctrl+Shift+O"),
+                       tr("Riconosce il testo nelle pagine acquisite: il documento aperto o più PDF, salvati con il suffisso «_ocr»"))
+        self.a_ocr.setIcon(icon("ocr"))
         self.a_export = A(tr("&Esporta…"), lambda: self.export_doc(None), tr("Ctrl+Shift+E"),
                           tr("Esporta come immagini (PNG, JPG, TIFF), testo, Word (DOCX) o OpenDocument (ODT)"))
         self.a_closeall = A(tr("Chiudi &tutti"), self.close_all, "", tr("Chiude tutte le schede"))
@@ -377,6 +380,7 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         m.addAction(self.a_print)
         m.addAction(self.a_translate)
+        m.addAction(self.a_ocr)
         self.menu_export = m.addMenu(tr("Esporta"))
         self.menu_export.setIcon(icon("export"))
         for a in self.export_actions.values():
@@ -1060,6 +1064,17 @@ class MainWindow(QMainWindow):
         dlg = TranslateDialog(self, current, files, done)
         dlg.exec()
 
+    def ocr_dialog(self, files: Optional[list] = None) -> None:
+        """Rendi ricercabile (OCR): il documento aperto (se c'è) e/o altri PDF, sempre in nuovi file «nome_ocr.pdf».
+        Il documento aperto, riconosciuto, si apre in una scheda accanto all'originale."""
+        from .ocr_ui import OcrDialog
+        orig = self.pdf if not self.home_visible() else None
+        current = None
+        if orig is not None:
+            current = (orig.path, orig, os.path.basename(orig.path) if orig.path else tr("Senza titolo"))
+        dlg = OcrDialog(self, current, files, lambda out, data: self.open_beside(orig, out, data, tr("OCR")))
+        dlg.exec()
+
     def open_translated(self, orig: Optional[PdfDocument], out: Optional[str], data: bytes) -> None:
         """Apre il PDF tradotto in una scheda subito dopo l'originale (o al posto di una scheda già aperta sullo stesso file)."""
         self.open_beside(orig, out, data, tr("Traduci PDF"))
@@ -1096,6 +1111,8 @@ class MainWindow(QMainWindow):
             return self.scan_dialog()
         if key == "translate":
             return self.translate_dialog()
+        if key == "ocr":
+            return self.ocr_dialog()
         start = settings().value("lastdir", "")
         path, _ = QFileDialog.getOpenFileName(self, tr("Scegli il PDF"), start, tr("PDF (*.pdf);;Tutti i file (*)"))
         if not path or not self.open_path(path):

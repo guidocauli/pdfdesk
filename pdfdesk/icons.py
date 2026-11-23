@@ -374,7 +374,15 @@ def _scan(p, c):
     p.drawLine(16, 11, 32, 11); p.drawLine(16, 16, 28, 16); p.drawLine(9, 32, 39, 32)
 
 
-_DRAW = {"home": _home, "translate": _translate, "merge": _merge, "scan": _scan, "select": _select, "hand": _hand, "textsel": _textsel, "pen": _pen, "highlighter": _highlighter, "rect": _rect,
+def _ocr(p, c):
+    """Mirino (quattro angoli) con righe di testo: «riconosci il testo»."""
+    for x, y, dx, dy in ((6, 6, 1, 1), (42, 6, -1, 1), (6, 42, 1, -1), (42, 42, -1, -1)):
+        p.drawLine(x, y, x + 9 * dx, y); p.drawLine(x, y, x, y + 9 * dy)
+    p.drawLine(15, 17, 33, 17); p.drawLine(24, 17, 24, 31)          # «T»
+    p.drawLine(14, 36, 34, 36)
+
+
+_DRAW = {"home": _home, "translate": _translate, "merge": _merge, "scan": _scan, "ocr": _ocr, "select": _select, "hand": _hand, "textsel": _textsel, "pen": _pen, "highlighter": _highlighter, "rect": _rect,
          "ellipse": _ellipse, "line": _line, "arrow": _arrow, "text": _text, "image": _image, "sign": _sign, "hl": _hl,
          "ul": _ul, "st": _st, "redact": _redact, "applyred": _applyred, "group": _group, "ungroup": _ungroup, "edittext": _edittext, "eraser": _eraser, "comment": _comment, "sigbox": _sign, "app": _app,
          "open": _open, "save": _save, "saveas": _saveas, "new": _new, "undo": _undo, "redo": _redo, "zoom": _mag,

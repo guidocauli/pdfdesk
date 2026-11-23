@@ -201,7 +201,7 @@ def run() -> int:
     def modules():
         import importlib.util
         names = ("compress", "core", "export", "export_fixed", "extract", "fonts", "imgutil", "merge", "parallel", "paths", "pdfstd",
-                 "scan", "signing", "sigstore", "textbox", "updater", "selftest", "cli", "shutdown", "crashlog", "net", "docstats", "home", "translate", "translate_ui", "view", "dialogs", "mainwindow", "icons", "theme", "printing", "inmenu", "i18n", "i18n_en")
+                 "scan", "signing", "sigstore", "textbox", "updater", "selftest", "cli", "shutdown", "crashlog", "net", "docstats", "ocr", "ocr_ui", "home", "translate", "translate_ui", "view", "dialogs", "mainwindow", "icons", "theme", "printing", "inmenu", "i18n", "i18n_en")
         missing = [n for n in names if importlib.util.find_spec("pdfdesk." + n) is None]   # senza importarli (alcuni richiedono Qt)
         assert not missing, "moduli assenti dal pacchetto: " + ", ".join(missing)       # es. scartati dalla compilazione per sintassi non valida
         from . import net                       # certificati per le connessioni HTTPS: archivio del sistema e certifi
@@ -229,7 +229,30 @@ def run() -> int:
         d.close()
         return f"lingua rilevata: {lang}, {rep.blocks} caselle riscritte"
 
+    def ocr_engine():
+        # il motore OCR (Tesseract dentro PyMuPDF) deve esserci su ogni sistema; con lingue disponibili si prova davvero
+        import tempfile
+        from . import ocr
+        assert ocr.engine_ok(), "PyMuPDF senza OCR"
+        d = fitz.open(); pg = d.new_page(); pg.insert_text((72, 120), "Prova OCR 2026", fontsize=24)
+        pix = pg.get_pixmap(dpi=200)
+        img = fitz.open(); ip = img.new_page(width=pg.rect.width, height=pg.rect.height)
+        ip.insert_image(ip.rect, stream=pix.tobytes("png"))
+        langs = ocr.languages()
+        if "eng" in langs or "ita" in langs:
+            code, td = ocr.resolve("eng" if "eng" in langs else "ita")
+            n = ocr.ocr_page(ip, code, td)
+            assert n and "2026" in ip.get_text(), "testo non riconosciuto"
+            return f"motore incluso, riconoscimento riuscito; lingue: {', '.join(langs)}"
+        with tempfile.TemporaryDirectory() as empty:     # senza lingue: il motore deve rispondere «lingua non caricata»
+            try:
+                pix.pdfocr_tobytes(language="eng", tessdata=empty)
+            except Exception as e:  # noqa: BLE001
+                assert "tesseract" in str(e).lower(), f"motore OCR assente: {e}"
+        return "motore incluso; nessuna lingua scaricata (Preferenze → Scansione e OCR)"
+
     step("moduli del programma", modules)
+    step("OCR", ocr_engine)
     step("traduzione", translation)
     step("esportazione TXT/DOCX/ODT", exports)
     step("calcolo parallelo", par)

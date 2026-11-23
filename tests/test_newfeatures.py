@@ -921,9 +921,15 @@ class OcrDownloadTests(unittest.TestCase):
         nsi = open(os.path.join(os.path.dirname(__file__), "..", "packaging", "windows", "pdfdesk.nsi"), encoding="utf-8").read()
         for needle in ('Section "$(SEC_OCR)" SecOcr', "--install-ocr", '"/OCR"', "OcrInstalled"):
             self.assertIn(needle, nsi)
-        from pdfdesk import cli
-        if sys.platform != "win32":
-            self.assertEqual(cli.main(["--install-ocr", os.path.join(self.tmp, "d")]), 1)     # fuori da Windows: errore con il comando da usare
+        from unittest import mock
+        from pdfdesk import cli, ocr
+        # su ogni sistema: scarica le lingue predefinite in CARTELLA/tessdata (il motore OCR è nel programma)
+        with mock.patch.object(ocr, "download", return_value=["ita", "eng"]) as dl:
+            self.assertEqual(cli.main(["--install-ocr", os.path.join(self.tmp, "d")]), 0)
+        self.assertEqual(dl.call_args.args[0], ["ita", "eng"])
+        self.assertEqual(dl.call_args.kwargs["dest"], os.path.join(self.tmp, "d", "tessdata"))
+        with mock.patch.object(ocr, "download", side_effect=ocr.OcrError("rete")):
+            self.assertEqual(cli.main(["--install-ocr", os.path.join(self.tmp, "d")]), 1)
 
     def test_wia_script_no_case_insensitive_clash(self):
         """PowerShell non distingue maiuscole/minuscole: una variabile con lo stesso nome di un parametro tipizzato ne eredita il tipo

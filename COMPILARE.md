@@ -58,7 +58,7 @@ La versione si legge da `pdfdesk/__init__.py`.
 
 ### Installatore Windows
 
-`./build_installer.sh` richiede `makensis` (pacchetto `nsis`) e parte da `dist-wine/pdfdesk.exe` o `dist/pdfdesk.exe`. Lo script NSIS è `packaging/windows/pdfdesk.nsi`. Componenti: programma, collegamenti, associazione ai PDF, certificato dell'editore, OCR (Tesseract scaricato da internet, versione e SHA-256 fissati in `pdfdesk/scan.py`).
+`./build_installer.sh` richiede `makensis` (pacchetto `nsis`) e parte da `dist-wine/pdfdesk.exe` o `dist/pdfdesk.exe`. Lo script NSIS è `packaging/windows/pdfdesk.nsi`. Componenti: programma, collegamenti, associazione ai PDF, certificato dell'editore, OCR (dati delle lingue italiano e inglese scaricati da internet, versione e SHA-256 fissati in `pdfdesk/ocr.py`; il motore Tesseract è già dentro PyMuPDF).
 
 Le icone si rigenerano con `python packaging/make_icons.py` (cartella `packaging/assets/`).
 

@@ -27,6 +27,7 @@ ACTIVITIES = (
     ("standard", "std", "Converti in PDF/A o PDF/X", "Archiviazione a lungo termine o stampa"),
     ("export", "export", "Esporta in Word o immagini", "DOCX, ODT, PNG, JPG, TIFF o testo"),
     ("translate", "translate", "Traduci un PDF", "In un'altra lingua, anche più file insieme"),
+    ("ocr", "ocr", "Rendi ricercabile (OCR)", "Riconosci il testo nelle pagine acquisite, anche più file"),
     ("verify", "verify", "Verifica le firme", "Controlla integrità e validità delle firme"),
     ("redact", "redact", "Oscura informazioni", "Nascondi in modo permanente testo e immagini"),
 )

@@ -1052,7 +1052,7 @@ class HomePageTests(unittest.TestCase):
             self.assertEqual(len(w.home.rows), 10)                                  # massimo 10, i file mancanti esclusi
             self.assertEqual([r.path for r in w.home.rows], self.recents[:10])
             self.assertEqual(set(w.home.cards), {"open", "new", "merge", "scan", "form", "sign", "compress", "standard", "export",
-                                                  "translate", "verify", "redact"})
+                                                  "translate", "ocr", "verify", "redact"})
             self.assertIs(w.bars[0].actions()[0], w.a_home)                         # primo pulsante della barra principale
         finally:
             w.close(); wait(30)

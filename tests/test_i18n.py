@@ -24,7 +24,7 @@ class I18nTests(unittest.TestCase):
 
     def test_every_tokenized_text_has_translation(self):
         miss = set()
-        for f in ("mainwindow", "dialogs", "core", "scan", "merge"):
+        for f in ("mainwindow", "dialogs", "core", "scan", "merge", "ocr", "ocr_ui"):
             t = ast.parse(open(os.path.join(PKG, f + ".py"), encoding="utf-8").read())
             for n in ast.walk(t):
                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "tr" and n.args \

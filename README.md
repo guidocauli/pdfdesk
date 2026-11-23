@@ -35,7 +35,7 @@ I pacchetti si trovano nella pagina [Releases](https://github.com/guidocauli/pdf
 2. Nei componenti puoi scegliere:
    - **Collegamento sul desktop** e **«Apri con» per i PDF**;
    - **Certificato dell'editore**: rende riconosciuta la firma del programma ed evita l'avviso «editore sconosciuto» di SmartScreen;
-   - **OCR**: scarica Tesseract da internet per rendere ricercabili le scansioni (vedi [Scansione e OCR](#scansione-e-ocr)).
+   - **OCR**: scarica le lingue italiano e inglese per il riconoscimento del testo, circa 7 MB (vedi [Scansione e OCR](#scansione-e-ocr)).
 3. Il programma viene installato in `C:\Program Files\PDFDesk`.
 
 Per **aggiornare** basta eseguire l'installatore della nuova versione: aggiorna la cartella esistente e mantiene impostazioni e firme salvate. Per **disinstallare** usa *Impostazioni → App*.
@@ -203,17 +203,26 @@ Un file che dichiara uno standard viene riconosciuto all'apertura. Se lo modific
 
 Si scelgono scanner, piano o alimentatore automatico, colore/grigi/bianco e nero, risoluzione e formato. Le pagine si riordinano, ruotano ed eliminano prima di creare il PDF. Senza scanner si possono comunque importare immagini già salvate.
 
-**OCR (testo ricercabile)** con [Tesseract](https://github.com/tesseract-ocr/tesseract):
+### OCR (testo ricercabile)
 
-| Sistema | Installazione |
-|---|---|
-| Windows | componente «OCR» dell'installatore, oppure pulsante **Scarica OCR…** nella finestra di scansione |
-| Debian / Ubuntu | `sudo apt install tesseract-ocr tesseract-ocr-ita` |
-| Fedora / RedHat | `sudo dnf install tesseract tesseract-langpack-ita` |
-| Arch | `sudo pacman -S tesseract tesseract-data-ita` |
-| macOS | `brew install tesseract tesseract-lang` |
+Il motore OCR ([Tesseract](https://github.com/tesseract-ocr/tesseract)) è **incluso in PDFDesk** su Windows, macOS e Linux: non va installato. Servono solo i dati delle lingue, da scaricare una volta sola:
 
-Tesseract viene trovato automaticamente: nel PATH, in `C:\Program Files\Tesseract-OCR`, nella cartella di PDFDesk e nel profilo utente. Non serve modificare il PATH. Un percorso diverso si indica in *Preferenze → Scansione e OCR*.
+- *Preferenze → Scansione e OCR → Scarica lingue…*: si spuntano le lingue (33 disponibili, 1–8 MB ciascuna). I file si verificano con SHA-256 e vanno nella cartella dei dati di PDFDesk, senza privilegi di amministratore.
+- Su Windows anche con il componente «OCR» dell'installatore (italiano e inglese).
+- Se nel sistema c'è già Tesseract (per esempio `tesseract-ocr-ita` su Debian/Ubuntu), PDFDesk ne usa anche le lingue installate.
+
+L'OCR si applica:
+
+- **alle scansioni**: casella *Rendi il testo ricercabile (OCR)* nella finestra di scansione;
+- **ai PDF esistenti**: *File → Rendi ricercabile (OCR)…* (Ctrl+Maiusc+O) o l'attività *Rendi ricercabile (OCR)*:
+  - il documento aperto e/o altri PDF (anche trascinati nella finestra);
+  - ogni file si salva come nuovo file con un suffisso (predefinito `_ocr`: `relazione.pdf` → `relazione_ocr.pdf`), nella stessa cartella o in una scelta; gli originali non vengono modificati;
+  - il documento aperto, una volta riconosciuto, si apre in una scheda accanto;
+  - si possono scegliere più lingue insieme e la risoluzione (200, 300, 400 dpi);
+  - in modo predefinito si riconoscono solo le pagine senza testo.
+- Il testo riconosciuto è invisibile e si sovrappone alla pagina. L'aspetto non cambia (immagini, grafica e qualità restano quelle di prima), ma il testo diventa selezionabile, copiabile e ricercabile.
+
+Da riga di comando: `pdfdesk --ocr FILE.pdf… [--ocr-lang ita+eng] [--ocr-suffix _ocr] [--outdir CARTELLA] [--ocr-all] [--dpi 300]`; le lingue si scaricano con `pdfdesk --ocr-download ita+eng+deu`.
 
 ---
 
@@ -256,7 +265,7 @@ Riga di comando: `pdfdesk --translate a.pdf b.pdf --to en [--from it] [--name "{
 | Barre degli strumenti | icone, testo sui pulsanti, disposizione, blocco |
 | Visualizzazione | ingrandimento iniziale, miniature, evidenziazione dei campi, griglia, selezione del testo |
 | Prestazioni | disegno della vista (Software o OpenGL), numero di processori |
-| Scansione e OCR | percorso di Tesseract |
+| Scansione e OCR | lingue OCR da scaricare o togliere, Tesseract di sistema (facoltativo) |
 | Traduzione | motore (locale, DeepL, LibreTranslate), chiavi, modelli scaricati |
 
 **Prestazioni.** L'esportazione in immagini o testo e la ricerca nei documenti lunghi usano più processori, fino a *n − 1*. La vista OpenGL è sperimentale; se la scheda grafica non la supporta, il programma torna al disegno software.

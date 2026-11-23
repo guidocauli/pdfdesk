@@ -6,6 +6,8 @@
 |---|---|---|
 | Qt / PySide6 | LGPL-3.0 | interfaccia grafica |
 | PyMuPDF / MuPDF | AGPL-3.0 | lettura, rendering, annotazioni |
+| Tesseract OCR (incluso in MuPDF) | Apache-2.0 | motore OCR |
+| tessdata_fast 4.1.0 (scaricati all'uso) | Apache-2.0 | dati delle lingue OCR |
 | pyHanko | MIT | firme digitali PAdES |
 | python-pkcs11 | MIT | smart card (PKCS#11) |
 | pikepdf / QPDF | MPL-2.0 / Apache-2.0 | metadati e correzioni PDF/A e PDF/X |

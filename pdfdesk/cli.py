@@ -36,11 +36,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--to", metavar="LINGUA", help="con --translate: lingua di destinazione (codice ISO, es. en, it, de)")
     p.add_argument("--from", dest="src", metavar="LINGUA", help="con --translate: lingua di partenza (se assente viene rilevata)")
     p.add_argument("--name", metavar="SCHEMA", help="con --translate: nome dei file tradotti, con {name} e {lang} (predefinito {name}_translated_{lang})")
-    p.add_argument("--outdir", metavar="CARTELLA", help="con --translate: cartella dei file tradotti (predefinita: quella dell'originale)")
+    p.add_argument("--outdir", metavar="CARTELLA", help="con --translate o --ocr: cartella dei file di uscita (predefinita: quella dell'originale)")
     p.add_argument("--engine", choices=["local", "deepl", "libretranslate"], default="local",
                    help="con --translate: motore (local senza internet; deepl usa DEEPL_KEY; libretranslate usa LIBRETRANSLATE_URL e LIBRETRANSLATE_KEY)")
     p.add_argument("--verify", metavar="FILE", help="verifica le firme digitali di un PDF")
-    p.add_argument("--install-ocr", metavar="CARTELLA", help="Windows: scarica e installa Tesseract (OCR) nella CARTELLA (usato dall'installatore)")
+    p.add_argument("--install-ocr", metavar="CARTELLA", help="scarica le lingue OCR predefinite (italiano, inglese) in CARTELLA/tessdata (usato dall'installatore Windows)")
+    p.add_argument("--ocr", nargs="+", metavar="PDF", help="rende ricercabili (OCR) i PDF indicati, salvandoli come nome_ocr.pdf")
+    p.add_argument("--ocr-lang", metavar="LINGUE", help="con --ocr: lingue Tesseract, es. ita+eng (predefinite)")
+    p.add_argument("--ocr-suffix", default="_ocr", metavar="SUFFISSO", help="con --ocr: suffisso dei file di uscita (predefinito _ocr)")
+    p.add_argument("--ocr-all", action="store_true", help="con --ocr: riconosce anche le pagine che hanno già testo")
+    p.add_argument("--dpi", type=int, default=300, help="con --ocr: risoluzione del riconoscimento (predefinita 300)")
+    p.add_argument("--overwrite", action="store_true", help="con --ocr: sovrascrive i file di uscita esistenti")
+    p.add_argument("--ocr-download", metavar="LINGUE", help="scarica le lingue OCR indicate (es. ita+eng+deu) nella cartella dei dati")
     p.add_argument("--selftest", action="store_true", help="autodiagnosi: prova tutte le funzioni principali ed esce")
     return p
 
@@ -96,13 +103,36 @@ def main(argv=None) -> int:
     if args.version:
         print(VERSION_LINE)
         return 0
-    if args.install_ocr:
-        from . import scan
+    if args.install_ocr or args.ocr_download:
+        # il motore OCR è nel programma: si scaricano solo le lingue (installatore Windows: accanto al programma)
+        from . import ocr
+        codes = [c.strip() for c in (args.ocr_download or "+".join(ocr.DEFAULT_LANGS)).replace(",", "+").split("+") if c.strip()]
+        dest = os.path.join(args.install_ocr, "tessdata") if args.install_ocr else ""
         try:
-            print(f"{VERSION_LINE}\n" + scan.install_tesseract(args.install_ocr))
+            got = ocr.download(codes, dest=dest)
         except Exception as e:
             print(f"Errore: {e}", file=sys.stderr); return 1
+        print(f"{VERSION_LINE}\n" + (f"lingue scaricate: {', '.join(got)}" if got else "lingue già presenti")
+              + f"\ncartella: {dest or ocr.user_dir()}")
         return 0
+    if args.ocr:
+        from . import ocr
+        bad = [f for f in args.ocr if not os.path.isfile(f)]
+        if bad:
+            print(f"{VERSION_LINE}\nERRORE: file non trovato: {', '.join(bad)}", file=sys.stderr)
+            return 2
+        langs = (args.ocr_lang or "+".join(ocr.DEFAULT_LANGS)).replace(",", "+")
+        errors = 0
+        print(VERSION_LINE)
+        for f in args.ocr:
+            out = ocr.output_name(f, args.ocr_suffix, args.outdir or "", args.overwrite)
+            try:
+                rep = ocr.ocr_file(f, out, langs, only_missing=not args.ocr_all, dpi=args.dpi)
+                print(f"{f} → {out}: {rep.text()}")
+            except Exception as e:  # noqa: BLE001
+                errors += 1
+                print(f"{f}: ERRORE: {e}", file=sys.stderr)
+        return 1 if errors else 0
     if args.compress:
         src, dst = args.compress
         if os.path.abspath(src) == os.path.abspath(dst):

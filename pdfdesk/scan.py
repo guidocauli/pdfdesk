@@ -318,12 +318,8 @@ def _tess_env(tess: str) -> Optional[dict]:
 
 
 def ocr_hint() -> str:
-    """Come installare Tesseract su questo sistema (testo per l'utente)."""
-    if sys.platform == "win32":
-        return tr("Usa il pulsante «Scarica OCR» (richiede internet)")
-    if sys.platform == "darwin":
-        return OCR_INSTALL_HINT["macos"]
-    return "{}  |  {}  |  {}".format(OCR_INSTALL_HINT["debian"], OCR_INSTALL_HINT["redhat"], OCR_INSTALL_HINT["arch"])
+    """Come attivare l'OCR (testo per l'utente): il motore è incluso, servono solo le lingue."""
+    return tr("Scarica le lingue OCR da Preferenze → Scansione e OCR (pulsante «Scarica lingue…»)")
 
 
 def _download(url: str, dest: str, progress: Optional[Callable[[int, int], bool]] = None, sha256: str = "") -> None:
@@ -437,7 +433,16 @@ def images_to_pdf(files: list[str], out_path: str, dpi: int = 300, jpeg_quality:
     if not files:
         raise ScanError(tr("Nessuna pagina"))
     out = fitz.open()
-    tess = tesseract_path() if ocr_lang else None
+    # OCR: motore integrato (servono solo i dati delle lingue); se manca, Tesseract esterno
+    from . import ocr as _ocr
+    builtin = None
+    tess = None
+    if ocr_lang:
+        try:
+            builtin = _ocr.resolve(ocr_lang) if _ocr.engine_ok() else None
+        except _ocr.OcrError:
+            builtin = None
+        tess = None if builtin else tesseract_path()
     n = len(files)
     try:
         for i, f in enumerate(files):
@@ -462,7 +467,12 @@ def images_to_pdf(files: list[str], out_path: str, dpi: int = 300, jpeg_quality:
             im.close()
             page = out.new_page(width=w * 72.0 / res, height=h * 72.0 / res)
             page.insert_image(page.rect, stream=data)
-            if tess:
+            if builtin:
+                try:
+                    _ocr.ocr_page(page, builtin[0], builtin[1])
+                except Exception:
+                    pass                                  # pagina senza testo riconosciuto: resta l'immagine
+            elif tess:
                 _ocr_page(out, page, f, tess, ocr_lang)
         if title:
             out.set_metadata({"title": title})
@@ -492,6 +502,13 @@ def _ocr_page(doc: fitz.Document, page: fitz.Page, img_path: str, tess: str, lan
 
 
 def ocr_languages() -> list[str]:
+    """Lingue OCR utilizzabili: quelle del motore integrato (dati scaricati o di sistema), altrimenti quelle del
+    Tesseract esterno."""
+    from . import ocr as _ocr
+    if _ocr.engine_ok():
+        langs = _ocr.languages()
+        if langs:
+            return langs
     t = tesseract_path()
     if not t:
         return []

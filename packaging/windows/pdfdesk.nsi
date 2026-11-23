@@ -1,10 +1,11 @@
 ; PDFDesk — Guido Cauli <guido.cauli@gmail.com>
 ; Installer per Windows (NSIS). Installa, AGGIORNA una versione precedente (stessa cartella, stessi collegamenti) e si disinstalla.
-; Compilazione: makensis -DVERSION=0.7.18 -DEXE=..\..\dist-wine\pdfdesk.exe -DOUTFILE=pdfdesk-0.7.18-windows-x86_64-setup.exe pdfdesk.nsi
+; Compilazione: makensis -DVERSION=0.7.19 -DEXE=..\..\dist-wine\pdfdesk.exe -DOUTFILE=pdfdesk-0.7.19-windows-x86_64-setup.exe pdfdesk.nsi
 ; Opzioni da riga di comando:  /S (silenzioso)   /D=C:\percorso (cartella, ultimo parametro)   /CERT (con /S: installa anche il certificato)
 ; L'eseguibile e questo installer sono firmati con il certificato autofirmato pdfdesk-sign.cer (vedi sign_windows.sh): la sezione
 ; «Certificato» lo aggiunge alle autorità attendibili e agli editori attendibili del computer, così Windows riconosce la firma.
-; Sezione «OCR»: scarica Tesseract da internet (versione e SHA-256 fissati in pdfdesk/scan.py) eseguendo «pdfdesk.exe --install-ocr»;
+; Sezione «OCR»: il motore OCR è già nel programma; la sezione scarica i dati delle lingue italiana e inglese (versione e SHA-256
+; fissati in pdfdesk/ocr.py) in $INSTDIR\tesseract\tessdata eseguendo «pdfdesk.exe --install-ocr»;
 ; in modalità silenziosa solo con /OCR. Opzioni:  /S  /D=C:\percorso  /CERT  /OCR
 
 Unicode true
@@ -87,12 +88,12 @@ LangString SEC_CERT ${LANG_ITALIAN} "Certificato dell'editore (consigliato: Wind
 LangString SEC_CERT ${LANG_ENGLISH} "Publisher certificate (recommended: Windows recognises PDFDesk's signature)"
 LangString DESC_CERT ${LANG_ITALIAN} "Aggiunge il certificato di Guido Cauli alle autorità e agli editori attendibili di questo computer, così Windows non tratta PDFDesk come software di un editore sconosciuto. Fidati solo se hai scaricato questo programma da una fonte che ritieni sicura."
 LangString DESC_CERT ${LANG_ENGLISH} "Adds Guido Cauli's certificate to this computer's trusted root authorities and trusted publishers, so Windows no longer treats PDFDesk as coming from an unknown publisher. Trust it only if you downloaded this program from a source you consider safe."
-LangString SEC_OCR ${LANG_ITALIAN} "OCR: scarica Tesseract da internet (circa 50 MB, per rendere ricercabili le scansioni)"
-LangString SEC_OCR ${LANG_ENGLISH} "OCR: download Tesseract from the internet (about 50 MB, makes scans searchable)"
-LangString DESC_OCR ${LANG_ITALIAN} "Scarica Tesseract (motore OCR) dal sito dell'Università di Mannheim e lo installa nella cartella di PDFDesk, con la lingua italiana. Richiede internet; se il download non riesce, PDFDesk si installa lo stesso e l'OCR si può scaricare più tardi dalla finestra «Crea PDF da scansione»."
-LangString DESC_OCR ${LANG_ENGLISH} "Downloads Tesseract (OCR engine) from the University of Mannheim and installs it in PDFDesk's folder, with Italian language data. Requires internet; if the download fails PDFDesk is still installed and OCR can be downloaded later from the «Create PDF from scan» window."
-LangString MSG_OCR_FAIL ${LANG_ITALIAN} "Download dell'OCR non riuscito (nessuna connessione o file non valido). PDFDesk è stato installato: l'OCR si può scaricare più tardi dalla finestra «Crea PDF da scansione»."
-LangString MSG_OCR_FAIL ${LANG_ENGLISH} "OCR download failed (no connection or invalid file). PDFDesk was installed: OCR can be downloaded later from the «Create PDF from scan» window."
+LangString SEC_OCR ${LANG_ITALIAN} "OCR: scarica le lingue italiano e inglese (circa 7 MB)"
+LangString SEC_OCR ${LANG_ENGLISH} "OCR: download Italian and English language data (about 7 MB)"
+LangString DESC_OCR ${LANG_ITALIAN} "Il motore OCR è già incluso in PDFDesk: questa voce scarica da internet i dati delle lingue italiana e inglese (file verificati). Altre lingue si aggiungono in qualsiasi momento da Preferenze → Scansione e OCR. Se il download non riesce, PDFDesk si installa lo stesso."
+LangString DESC_OCR ${LANG_ENGLISH} "The OCR engine is already included in PDFDesk: this item downloads Italian and English language data from the internet (verified files). More languages can be added at any time from Preferences → Scan and OCR. If the download fails PDFDesk is still installed."
+LangString MSG_OCR_FAIL ${LANG_ITALIAN} "Download delle lingue OCR non riuscito (nessuna connessione o file non valido). PDFDesk è stato installato: le lingue si possono scaricare più tardi da Preferenze → Scansione e OCR."
+LangString MSG_OCR_FAIL ${LANG_ENGLISH} "OCR language download failed (no connection or invalid file). PDFDesk was installed: languages can be downloaded later from Preferences → Scan and OCR."
 LangString UNINST_KEEP ${LANG_ITALIAN} "PDFDesk è stato rimosso. Le impostazioni personali e le firme salvate sono state conservate."
 LangString UNINST_KEEP ${LANG_ENGLISH} "PDFDesk has been removed. Your personal settings and saved signatures were kept."
 
@@ -171,7 +172,7 @@ SectionEnd
 
 Section "$(SEC_OCR)" SecOcr
   SetRegView 64
-  DetailPrint "Tesseract (OCR)…"
+  DetailPrint "OCR: lingue italiano e inglese…"
   ExecWait '"$INSTDIR\pdfdesk.exe" --install-ocr "$INSTDIR\tesseract"' $0
   ${If} $0 != 0
     IfSilent +2 0

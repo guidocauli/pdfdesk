@@ -1559,11 +1559,23 @@ class PreferencesDialog(QDialog):
                                  "Con «Automatico» si usano al massimo tutti i processori meno uno, così il computer resta reattivo."))
         f6.addRow(tr("Processori da usare"), self.cores)
         pg_perf.addWidget(g6)
-        g6 = QGroupBox(tr("Tesseract (OCR)")); f6 = QFormLayout(g6)
+        # lingue OCR: il motore (Tesseract) è dentro il programma, servono solo i dati delle lingue
+        g7 = QGroupBox(tr("OCR (riconoscimento del testo)")); f7 = QVBoxLayout(g7)
+        lbl7 = QLabel(tr("Il motore OCR è incluso in PDFDesk su Windows, macOS e Linux: non serve installare Tesseract. "
+                         "Servono solo i dati delle lingue, che si scaricano qui una volta sola (1–8 MB ciascuna)."))
+        lbl7.setWordWrap(True); f7.addWidget(lbl7)
+        self.ocr_langs = QLabel(); self.ocr_langs.setWordWrap(True)
+        f7.addWidget(self.ocr_langs)
+        b_langs = QPushButton(tr("Scarica lingue…"))
+        b_langs.setToolTip(tr("Scegli le lingue da scaricare o da togliere"))
+        b_langs.clicked.connect(self._ocr_langs_dialog)
+        lrow = QHBoxLayout(); lrow.addWidget(b_langs); lrow.addStretch(1); f7.addLayout(lrow)
+        pg_ocr.addWidget(g7)
+        g6 = QGroupBox(tr("Tesseract installato nel sistema (facoltativo)")); f6 = QFormLayout(g6)
         self.ocr_path = QLineEdit(str(s.value("ocr/path", "")))
         self.ocr_path.setPlaceholderText(tr("Automatico (cerca Tesseract da solo)"))
-        self.ocr_path.setToolTip(tr("Percorso di tesseract (file eseguibile o cartella che lo contiene), per l'OCR nelle scansioni. Vuoto = ricerca automatica nel PATH e nelle "
-                                    "cartelle usuali (anche C:\\Program Files\\Tesseract-OCR): non serve modificare la variabile PATH."))
+        self.ocr_path.setToolTip(tr("Non serve: l'OCR usa il motore incluso. Se nel sistema c'è già Tesseract, PDFDesk ne usa anche "
+                                    "le lingue installate. Vuoto = ricerca automatica nel PATH e nelle cartelle usuali."))
         b_browse = QPushButton(tr("Sfoglia…")); b_auto = QPushButton(tr("Cerca"))
         orow = QHBoxLayout(); orow.addWidget(self.ocr_path, 1); orow.addWidget(b_browse); orow.addWidget(b_auto)
         self.ocr_state = QLabel(); self.ocr_state.setWordWrap(True)
@@ -1639,11 +1651,24 @@ class PreferencesDialog(QDialog):
             T.remove_model(a, b)
         self._refresh_models()
 
+    def _ocr_langs_dialog(self) -> None:
+        from .ocr_ui import LanguagesDialog
+        LanguagesDialog(self).exec()
+        self._ocr_refresh()
+
     def _ocr_refresh(self) -> None:
-        from . import scan
+        from . import ocr, scan
         scan.set_tesseract_path(self.ocr_path.text())
         p = scan.tesseract_path()
-        self.ocr_state.setText(tr("Trovato: {}").format(p) if p else tr("Tesseract non trovato") + " — " + scan.ocr_hint())
+        self.ocr_state.setText(tr("Trovato: {}").format(p) if p else tr("Non trovato (non è necessario)"))
+        if hasattr(self, "ocr_langs"):
+            langs = ocr.languages()
+            if not ocr.engine_ok():
+                self.ocr_langs.setText(tr("Il motore OCR non è disponibile in questa installazione"))
+            elif langs:
+                self.ocr_langs.setText(tr("Lingue disponibili: {l}").format(l=", ".join(ocr.lang_name(c) for c in langs)))
+            else:
+                self.ocr_langs.setText(tr("Nessuna lingua OCR: usa «Scarica lingue…» (italiano e inglese sono la scelta tipica)."))
 
     def _ocr_browse(self) -> None:
         f, _ = QFileDialog.getOpenFileName(self, tr("Percorso di Tesseract"), self.ocr_path.text() or os.path.expanduser("~"))
@@ -1654,7 +1679,8 @@ class PreferencesDialog(QDialog):
         from . import scan
         self.ocr_path.clear(); self._ocr_refresh()
         if not scan.tesseract_path():
-            QMessageBox.information(self, tr("OCR"), tr("Tesseract non trovato") + "\n" + scan.ocr_hint())
+            QMessageBox.information(self, tr("OCR"), tr("Tesseract non trovato nel sistema: non è necessario, l'OCR usa il motore incluso.")
+                                    + "\n" + scan.ocr_hint())
 
     def _defaults(self) -> None:
         self.theme.setCurrentIndex(0); self.menus.setCurrentIndex(0); self.icons.setCurrentIndex(1); self.style.setCurrentIndex(0); self.rows.setCurrentIndex(0); self.locked.setChecked(False)
@@ -2449,19 +2475,10 @@ class ScanDialog(QDialog):
         orow2 = QHBoxLayout()
         self.ocr = QCheckBox(tr("Rendi il testo ricercabile (OCR)"))
         self.lang = QComboBox()
-        langs = scan.ocr_languages()
-        for l in langs:
-            self.lang.addItem(l, l)
-        if "ita" in langs:
-            self.lang.setCurrentIndex(self.lang.findData("ita"))
-        self.ocr.setEnabled(bool(langs)); self.lang.setEnabled(bool(langs))
-        self.ocr_dl = QPushButton(tr("Scarica OCR…"))
-        self.ocr_dl.setVisible(False)
+        self.ocr_dl = QPushButton(tr("Lingue OCR…"))
+        self.ocr_dl.setToolTip(tr("Scarica le lingue per l'OCR (il motore è già incluso nel programma)"))
         self.ocr_dl.clicked.connect(self._download_ocr)
-        if not langs:
-            self.ocr.setToolTip(tr("Tesseract non trovato: installalo per attivare l'OCR") + "\n" + self._sc.ocr_hint())
-            self.ocr.setText(tr("Rendi il testo ricercabile (OCR) — richiede Tesseract, non trovato"))
-            self.ocr_dl.setVisible(sys.platform == "win32")
+        self._fill_ocr_langs()
         orow2.addWidget(self.ocr); orow2.addWidget(self.lang); orow2.addWidget(self.ocr_dl); orow2.addStretch(1)
         f.addRow(orow2)
         self.open_after = QCheckBox(tr("Apri il PDF dopo averlo creato")); self.open_after.setChecked(True)
@@ -2590,34 +2607,34 @@ class ScanDialog(QDialog):
         if p:
             self.out.setText(p if p.lower().endswith(".pdf") else p + ".pdf")
 
-    def _download_ocr(self) -> None:
-        """Windows: scarica e installa Tesseract (e la lingua italiana) da internet, poi attiva l'OCR."""
-        if QMessageBox.question(self, tr("Scarica OCR"), tr("Verrà scaricato Tesseract {v} da internet (circa 50 MB) e installato per PDFDesk. Continuare?")
-                                .format(v=self._sc.TESSERACT_VERSION)) != QMessageBox.Yes:
-            return
-        prog = QProgressDialog(tr("Scaricamento dell'OCR…"), tr("Annulla"), 0, 100, self)
-        prog.setWindowModality(Qt.WindowModal); prog.setMinimumDuration(0)
-
-        def cb(what, got, total):
-            prog.setLabelText(tr("Scaricamento: {w}").format(w=what)); prog.setValue(int(100 * got / total) if total else 0)
-            QApplication.processEvents()
-            return not prog.wasCanceled()
-        try:
-            self._sc.install_tesseract(progress=cb)
-        except Exception as e:
-            prog.close()
-            QMessageBox.critical(self, tr("Scarica OCR"), tr("Installazione dell'OCR non riuscita:\n{}").format(e))
-            return
-        prog.close()
+    def _fill_ocr_langs(self) -> None:
+        """Lingue OCR disponibili, con «Italiano + Inglese» in testa se ci sono entrambe."""
+        from . import ocr
         langs = self._sc.ocr_languages()
+        keep = self.lang.currentData() or str(settings().value("ocr/langs", "ita+eng"))
         self.lang.clear()
-        for l in langs:
-            self.lang.addItem(l, l)
-        if "ita" in langs:
-            self.lang.setCurrentIndex(self.lang.findData("ita"))
-        self.ocr.setEnabled(bool(langs)); self.lang.setEnabled(bool(langs)); self.ocr.setChecked(bool(langs))
-        self.ocr.setText(tr("Rendi il testo ricercabile (OCR)")); self.ocr.setToolTip("")
-        self.ocr_dl.setVisible(not langs)
+        if "ita" in langs and "eng" in langs:
+            self.lang.addItem(f"{ocr.lang_name('ita')} + {ocr.lang_name('eng')}", "ita+eng")
+        for c in langs:
+            self.lang.addItem(f"{ocr.lang_name(c)} [{c}]", c)
+        i = self.lang.findData(keep)
+        self.lang.setCurrentIndex(i if i >= 0 else 0)
+        self.ocr.setEnabled(bool(langs)); self.lang.setEnabled(bool(langs))
+        if langs:
+            self.ocr.setText(tr("Rendi il testo ricercabile (OCR)")); self.ocr.setToolTip("")
+        else:
+            self.ocr.setChecked(False)
+            self.ocr.setText(tr("Rendi il testo ricercabile (OCR) — scarica prima una lingua"))
+            self.ocr.setToolTip(self._sc.ocr_hint())
+
+    def _download_ocr(self) -> None:
+        """Scarica (o toglie) le lingue OCR: il motore è già nel programma, su ogni sistema."""
+        from .ocr_ui import LanguagesDialog
+        had = bool(self._sc.ocr_languages())
+        LanguagesDialog(self, preselect=() if had else ("ita", "eng")).exec()
+        self._fill_ocr_langs()
+        if not had and self.lang.count():
+            self.ocr.setChecked(True)
 
     def _create(self) -> None:
         if not self.out.text().strip():
