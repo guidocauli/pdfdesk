@@ -1,24 +1,20 @@
-# PDFDesk — Guido Cauli <guido.cauli@gmail.com> — 0.7.19
+# PDFDesk — Guido Cauli <guido.cauli@gmail.com> — 0.7.20
 
 ## Novità
-- **OCR sui PDF esistenti**: *File → Rendi ricercabile (OCR)…* (Ctrl+Maiusc+O) o l'attività *Rendi ricercabile (OCR)*.
-  - Il documento aperto e/o altri PDF, anche trascinati nella finestra.
-  - Ogni file si salva come nuovo file con un suffisso (predefinito `_ocr`: `relazione.pdf` → `relazione_ocr.pdf`), nella stessa cartella o in una scelta. Gli originali non vengono modificati.
-  - Il documento aperto, una volta riconosciuto, si apre in una scheda accanto.
-  - Si possono scegliere più lingue insieme e la risoluzione (200, 300, 400 dpi). In modo predefinito si riconoscono solo le pagine senza testo.
-  - Il testo riconosciuto è invisibile e appoggiato sulla pagina: l'aspetto non cambia (anche sulle pagine ruotate), ma il testo diventa selezionabile, copiabile e ricercabile.
-- **OCR senza installare Tesseract**, su Windows, macOS e Linux. Il motore OCR è già incluso nel programma; servono solo i dati delle lingue.
-  - Si scaricano da *Preferenze → Scansione e OCR → Scarica lingue…*: 33 lingue, 1–8 MB ciascuna.
-  - I file vanno nella cartella dei dati di PDFDesk, senza privilegi di amministratore, e vengono verificati con SHA-256.
-  - Se una rete blocca un indirizzo, si prova automaticamente il successivo.
-  - Se nel sistema c'è già Tesseract, PDFDesk ne usa anche le lingue installate.
-- **Scansione**: l'OCR usa lo stesso motore integrato. Il pulsante *Lingue OCR…* è disponibile su tutti i sistemi.
-- **Installatore Windows**: il componente «OCR» scarica solo le lingue italiano e inglese (circa 7 MB) invece di Tesseract (50 MB).
-- **Riga di comando**: `pdfdesk --ocr FILE.pdf… [--ocr-lang ita+eng] [--ocr-suffix _ocr] [--outdir CARTELLA] [--ocr-all] [--dpi 300] [--overwrite]`. Le lingue si scaricano con `pdfdesk --ocr-download ita+eng+deu`.
+- **Wayland nativo su Linux.** In una sessione Wayland PDFDesk usa Wayland nativo (finestre nitide con qualsiasi scala). Se Wayland non è disponibile passa da solo a X11 invece di interrompersi. In *Preferenze → Aspetto → Sistema grafico* si può forzare X11 (XWayland).
+- La finestra ha l'identificativo `pdfdesk`, uguale alla voce di menu: icona, raggruppamento e regole del compositor funzionano.
+
+## Correzioni
+- **Compositor a tasselli (niri, Hyprland, sway, river, i3)**:
+  - la finestra principale si stringe fino a circa 300 pixel, prima almeno 850. I pulsanti e i controlli della barra Proprietà che non ci stanno passano nel menu «»» delle barre; le statistiche nella barra di stato si accorciano con «…»;
+  - la dimensione della finestra la decide il compositor: quella salvata non viene più imposta né sovrascritta.
+- **Dialoghi sempre entro lo schermo**, anche su schermi piccoli; sui compositor a tasselli galleggiano sopra la finestra.
+- **Su ogni sistema** la dimensione salvata della finestra si riduce se supera lo schermo su cui si apre (per esempio passando a un monitor più piccolo).
+- Fra le librerie richieste su Linux nel README ci sono anche quelle di Wayland.
 
 ## File della release
-- `pdfdesk-0.7.19-windows-x86_64-setup.exe`, `pdfdesk-0.7.19-windows-x86_64.zip`
-- `pdfdesk-0.7.19-linux-x86_64.tar.gz`
-- `pdfdesk-0.7.19-macos-arm64.zip` (Apple Silicon; al primo avvio usare `sblocca.sh` incluso nello zip)
-- `pdfdesk-0.7.19-sorgenti.tar.gz`
-- `SHA256SUMS-0.7.19.txt`
+- `pdfdesk-0.7.20-windows-x86_64-setup.exe`, `pdfdesk-0.7.20-windows-x86_64.zip`
+- `pdfdesk-0.7.20-linux-x86_64.tar.gz`
+- `pdfdesk-0.7.20-macos-arm64.zip` (Apple Silicon; al primo avvio usare `sblocca.sh` incluso nello zip)
+- `pdfdesk-0.7.20-sorgenti.tar.gz`
+- `SHA256SUMS-0.7.20.txt`

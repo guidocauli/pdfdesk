@@ -537,9 +537,9 @@ class TabsGatingExportTests(unittest.TestCase):
         self.assertEqual(w.toolBarArea(tools), Q.LeftToolBarArea); self.assertEqual(tools.orientation(), Q.Vertical)
         props = next(t for t in w.bars if t.objectName() == "toolProps")
         w.removeToolBar(props); w.addToolBar(Q.RightToolBarArea, props); props.show(); wait(80)
-        self.assertEqual(w.props._box.direction().name, "TopToBottom")
+        self.assertTrue(all(b.direction().name == "TopToBottom" for b in w.props._boxes))
         w.removeToolBar(props); w.addToolBar(Q.TopToolBarArea, props); props.show(); wait(80)
-        self.assertEqual(w.props._box.direction().name, "LeftToRight")
+        self.assertTrue(all(b.direction().name == "LeftToRight" for b in w.props._boxes))
         w.apply_prefs(relayout=True)                                   # le barre ai lati restano dove sono
         self.assertEqual(w.toolBarArea(tools), Q.LeftToolBarArea)
 

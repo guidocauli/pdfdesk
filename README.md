@@ -57,13 +57,19 @@ sudo ./install.sh --system   # per tutti gli utenti (/opt/pdfdesk)
 
 Lo script aggiunge la voce nel menu delle applicazioni, l'associazione ai PDF e le icone. Il file `pdfdesk.desktop.in` del pacchetto è il modello da cui lo script crea la voce del menu: non si apre direttamente. Per aggiornare si lancia `install.sh` del pacchetto nuovo. Per rimuovere: `~/.local/share/pdfdesk/uninstall.sh` (oppure `sudo /opt/pdfdesk/uninstall.sh --system`).
 
+**Wayland e X11.**
+- In una sessione Wayland PDFDesk usa **Wayland nativo**, quindi le finestre restano nitide con qualsiasi scala; se Wayland non è disponibile passa da solo a X11. Con *Preferenze → Aspetto → Sistema grafico* si può forzare X11 (XWayland).
+- La finestra ha l'identificativo `pdfdesk`, uguale alla voce di menu: icona, raggruppamento e regole del compositor funzionano.
+- Sui **compositor a tasselli** (niri, Hyprland, sway, river, i3) la dimensione della finestra la decide il compositor. La finestra principale si stringe fino a circa 300 pixel: i pulsanti e i controlli che non ci stanno passano nel menu «»» delle barre, e la barra di stato si accorcia.
+- I dialoghi galleggiano sopra la finestra e non superano mai lo schermo, nemmeno su schermi piccoli.
+
 Librerie di sistema richieste da Qt (di solito già presenti in un desktop):
 
 | Distribuzione | Pacchetti |
 |---|---|
-| Debian / Ubuntu | `libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1 libxcb-cursor0` |
-| Fedora / RedHat | `mesa-libEGL mesa-libGL libxkbcommon dbus-libs fontconfig xcb-util-cursor` |
-| Arch | `libglvnd libxkbcommon dbus fontconfig xcb-util-cursor` |
+| Debian / Ubuntu | `libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1 libxcb-cursor0 libwayland-client0 libwayland-cursor0` |
+| Fedora / RedHat | `mesa-libEGL mesa-libGL libxkbcommon dbus-libs fontconfig xcb-util-cursor libwayland-client libwayland-cursor` |
+| Arch | `libglvnd libxkbcommon dbus fontconfig xcb-util-cursor wayland` |
 
 ### macOS
 
@@ -261,7 +267,7 @@ Riga di comando: `pdfdesk --translate a.pdf b.pdf --to en [--from it] [--name "{
 | Sezione | Contenuto |
 |---|---|
 | Generale | lingua (italiano, inglese), numero di file recenti, pagina «Attività» all'avvio |
-| Aspetto | tema (sistema, chiaro, scuro), menu a tendina, dimensione del testo (70–200 %), scala per schermi HiDPI/Retina (100–300 %) |
+| Aspetto | tema (sistema, chiaro, scuro), menu a tendina, dimensione del testo (70–200 %), scala per schermi HiDPI/Retina (100–300 %), sistema grafico su Linux (Wayland nativo o X11) |
 | Barre degli strumenti | icone, testo sui pulsanti, disposizione, blocco |
 | Visualizzazione | ingrandimento iniziale, miniature, evidenziazione dei campi, griglia, selezione del testo |
 | Prestazioni | disegno della vista (Software o OpenGL), numero di processori |

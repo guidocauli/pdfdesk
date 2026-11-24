@@ -962,6 +962,12 @@ EN = {
     "Automatico (tutti meno uno: {})": "Automatic (all but one: {})",
     "{} processori": "{} processors",
     "1 processore (nessun calcolo parallelo)": "1 processor (no parallel computing)",
+    # --- Wayland e X11
+    "Wayland nativo, se disponibile (consigliato)": "Native Wayland, if available (recommended)",
+    "X11 (XWayland)": "X11 (XWayland)",
+    "Solo Linux. In una sessione Wayland il programma usa Wayland nativo (finestre nitide con qualsiasi scala, compositor come niri, Hyprland, sway, GNOME, KDE); se non è disponibile passa da solo a X11. «X11» forza XWayland. Si applica al riavvio.": "Linux only. In a Wayland session the program uses native Wayland (sharp windows at any scale, compositors such as niri, Hyprland, sway, GNOME, KDE); if it is not available it switches to X11 by itself. «X11» forces XWayland. Applied at restart.",
+    "In uso: {}": "In use: {}",
+    "Sistema grafico": "Display system",
     # --- OCR su PDF esistenti, lingue OCR
     "Rendi ricercabile (&OCR)…": "Make searchable (&OCR)…",
     "Rendi ricercabile (OCR)": "Make searchable (OCR)",

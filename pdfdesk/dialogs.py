@@ -288,15 +288,23 @@ class PropertiesPanel(QWidget):
             w.setToolTip(t)
         self._compact, self._vertical = compact, False
         if compact:
-            h = QBoxLayout(QBoxLayout.LeftToRight, self)
-            self._box = h
-            h.setContentsMargins(4, 0, 4, 0); h.setSpacing(5)
-            for label, w in ((None, self.stroke), (None, self.fill_on), (None, self.fill), (tr("Spess."), self.width),
-                             (tr("Opac."), self.opacity), (None, self.font), (tr("Dim."), self.size), (None, self.styles_)):
-                if label:
-                    l = QLabel(label); l.setToolTip(w.toolTip()); h.addWidget(l)
-                h.addWidget(w)
-            h.addStretch(0)
+            # barra degli strumenti: i controlli stanno in gruppi separati (colori, spessore, opacità, carattere,
+            # dimensione, stile) che la finestra principale aggiunge uno per uno alla barra. Così, quando la finestra è
+            # stretta (compositor a tasselli come niri, Hyprland, sway, o schermi piccoli), i gruppi che non ci stanno
+            # passano nel menu «»» della barra invece di imporre una larghezza minima di ~800 px a tutta la finestra.
+            self._box = None
+            self._boxes = []
+            self.groups = []
+            for items in (((None, self.stroke), (None, self.fill_on), (None, self.fill)), ((tr("Spess."), self.width),),
+                          ((tr("Opac."), self.opacity),), ((None, self.font),), ((tr("Dim."), self.size),), ((None, self.styles_),)):
+                g = QWidget(); g.setObjectName("propGroup")
+                h = QBoxLayout(QBoxLayout.LeftToRight, g)
+                h.setContentsMargins(3, 0, 3, 0); h.setSpacing(5)
+                for label, w in items:
+                    if label:
+                        l = QLabel(label); l.setToolTip(w.toolTip()); h.addWidget(l)
+                    h.addWidget(w)
+                self._boxes.append(h); self.groups.append(g)
         else:
             f = QFormLayout(self)
             f.addRow(tr("Colore"), self.stroke)
@@ -338,15 +346,23 @@ class PropertiesPanel(QWidget):
         self.updateGeometry()
 
     def set_vertical(self, vertical: bool) -> None:
-        """Barra agganciata ai lati: i controlli si dispongono in colonna."""
-        box = getattr(self, "_box", None)
-        if box is None:
+        """Barra agganciata ai lati: i controlli di ogni gruppo si dispongono in colonna."""
+        boxes = getattr(self, "_boxes", None)
+        if not boxes:
             return
         self._vertical = vertical
-        box.setDirection(QBoxLayout.TopToBottom if vertical else QBoxLayout.LeftToRight)
-        box.setContentsMargins(2, 4, 2, 4) if vertical else box.setContentsMargins(4, 0, 4, 0)
+        for box in boxes:
+            box.setDirection(QBoxLayout.TopToBottom if vertical else QBoxLayout.LeftToRight)
+            box.setContentsMargins(2, 3, 2, 3) if vertical else box.setContentsMargins(3, 0, 3, 0)
         self.rescale()
-        self.adjustSize()
+        for g in self.groups:
+            g.adjustSize()
+
+    def setEnabled(self, on: bool) -> None:  # noqa: N802 (nome di Qt)
+        """Nella barra i controlli stanno nei gruppi, fuori dal pannello: si abilitano anche quelli."""
+        super().setEnabled(on)
+        for g in getattr(self, "groups", []):
+            g.setEnabled(on)
 
     def _emit(self, **kw) -> None:
         if self._lock:
@@ -1538,6 +1554,19 @@ class PreferencesDialog(QDialog):
         self.scale.setToolTip(tr("Ingrandisce tutta l'interfaccia (testo, icone, pulsanti) per gli schermi ad alta densità (HiDPI, Retina). "
                                  "«Automatica» usa la scala del sistema operativo. Si applica al riavvio del programma."))
         f6.addRow(tr("Scala dell'interfaccia"), self.scale)
+        self.platform = QComboBox()
+        self.platform.addItem(tr("Wayland nativo, se disponibile (consigliato)"), "auto")
+        self.platform.addItem(tr("X11 (XWayland)"), "x11")
+        self.platform.setCurrentIndex(max(0, self.platform.findData(str(s.value("ui/platform", "auto")))))
+        from . import wayland as _wl
+        self.platform.setToolTip(tr("Solo Linux. In una sessione Wayland il programma usa Wayland nativo (finestre nitide con "
+                                    "qualsiasi scala, compositor come niri, Hyprland, sway, GNOME, KDE); se non è disponibile "
+                                    "passa da solo a X11. «X11» forza XWayland. Si applica al riavvio.") + "\n"
+                                 + tr("In uso: {}").format(_wl.describe()))
+        if _wl.is_linux():
+            f6.addRow(tr("Sistema grafico"), self.platform)
+        else:
+            self.platform.setVisible(False)
         pg_look.addWidget(g6)
         g6 = QGroupBox(tr("Prestazioni")); f6 = QFormLayout(g6)
         self.gpu = QComboBox()
@@ -1685,7 +1714,7 @@ class PreferencesDialog(QDialog):
     def _defaults(self) -> None:
         self.theme.setCurrentIndex(0); self.menus.setCurrentIndex(0); self.icons.setCurrentIndex(1); self.style.setCurrentIndex(0); self.rows.setCurrentIndex(0); self.locked.setChecked(False)
         self.zoom.setCurrentIndex(0); self.thumbs.setChecked(True); self.fields.setChecked(True); self.recent.setValue(10); self.home_start.setChecked(True); self.tr_engine.setCurrentIndex(0)
-        self.grid_snap.setChecked(False); self.grid_show.setChecked(False); self.grid_unit.setCurrentIndex(0); self.grid_x.setValue(5.0); self.grid_y.setValue(5.0); self.textsel.setCurrentIndex(0); self.fontpct.setValue(100); self.lang.setCurrentIndex(0); self.scale.setCurrentIndex(0); self.gpu.setCurrentIndex(0); self.cores.setCurrentIndex(0); self.ocr_path.clear(); self._ocr_refresh()
+        self.grid_snap.setChecked(False); self.grid_show.setChecked(False); self.grid_unit.setCurrentIndex(0); self.grid_x.setValue(5.0); self.grid_y.setValue(5.0); self.textsel.setCurrentIndex(0); self.fontpct.setValue(100); self.lang.setCurrentIndex(0); self.scale.setCurrentIndex(0); self.platform.setCurrentIndex(0); self.gpu.setCurrentIndex(0); self.cores.setCurrentIndex(0); self.ocr_path.clear(); self._ocr_refresh()
 
     def store(self) -> None:
         s = settings()
@@ -1698,7 +1727,7 @@ class PreferencesDialog(QDialog):
         s.setValue("view/initzoom", self.zoom.currentIndex()); s.setValue("view/thumbs", self.thumbs.isChecked())
         s.setValue("view/fields", self.fields.isChecked()); s.setValue("recent_max", self.recent.value())
         s.setValue("grid/snap", self.grid_snap.isChecked()); s.setValue("grid/show", self.grid_show.isChecked())
-        s.setValue("view/textsel", self.textsel.currentData()); s.setValue("ui/fontpct", self.fontpct.value()); s.setValue("ui/scale", self.scale.currentData()); s.setValue("ui/gpu", self.gpu.currentData()); s.setValue("perf/cores", self.cores.currentData()); s.setValue("ocr/path", self.ocr_path.text().strip()); s.setValue("ui/lang", self.lang.currentData()); s.setValue("grid/unit", self.grid_unit.currentData()); s.setValue("grid/x", self.grid_x.value()); s.setValue("grid/y", self.grid_y.value())
+        s.setValue("view/textsel", self.textsel.currentData()); s.setValue("ui/fontpct", self.fontpct.value()); s.setValue("ui/scale", self.scale.currentData()); s.setValue("ui/platform", self.platform.currentData()); s.setValue("ui/gpu", self.gpu.currentData()); s.setValue("perf/cores", self.cores.currentData()); s.setValue("ocr/path", self.ocr_path.text().strip()); s.setValue("ui/lang", self.lang.currentData()); s.setValue("grid/unit", self.grid_unit.currentData()); s.setValue("grid/x", self.grid_x.value()); s.setValue("grid/y", self.grid_y.value())
 
 
 

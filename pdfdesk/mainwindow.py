@@ -16,7 +16,7 @@ from . import AUTHOR, CREDITS, VERSION_LINE, __version__, compress, fonts, pdfst
 from . import parallel, scan
 from .core import (release_memory, PasswordRequired, PdfDocument, PdfError, T_FREETEXT, T_STAMP, T_NOTE, T_SQUARE, T_CIRCLE, T_INK, T_LINE,
                    T_HIGHLIGHT, T_UNDERLINE, T_STRIKE, T_REDACT, to_page_rect)
-from .inmenu import InMenuBar, wayland_session
+from .inmenu import InMenuBar, wayland_session  # noqa: F401
 from .dialogs import (ModalPlacer, AboutDialog, ImageDialog, MergeDialog, ScanDialog, ExportDialog, ExtractImagesDialog, ImageOutDialog, MetadataDialog, FieldTextDialog, StandardDialog, PropertiesPanel, SaveDialog, SignatureLibraryDialog, SignDialog, TextDialog,
                       ThumbPanel, VerifyDialog, CertDialog, PreferencesDialog, settings)
 from .home import HomePage
@@ -28,11 +28,44 @@ from . import extract as extractor
 from .i18n import tr
 from .i18n import language as i18n_lang
 from PySide6.QtCore import QEvent, Signal
+from PySide6.QtGui import QPainter, QPalette
+from PySide6.QtWidgets import QSizePolicy
 
 
 class _ClickLabel(QLabel):
-    """Etichetta della barra di stato che risponde al clic."""
+    """Etichetta della barra di stato che risponde al clic. Con `elide` il testo si accorcia con «…» quando manca spazio
+    (finestra stretta) invece di imporre la propria larghezza alla finestra; il testo intero resta nel suggerimento."""
     clicked = Signal()
+
+    def __init__(self, text: str = "", elide: bool = False) -> None:
+        super().__init__(text)
+        self._elide = elide
+        self._full = text
+        if elide:
+            # Preferred: larghezza piena quando c'è spazio, fino alla minima (60 px) quando manca. («Ignored» nella barra
+            # di stato dava 0 px: le statistiche sparivano.)
+            self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+
+    def setText(self, text: str) -> None:  # noqa: N802
+        self._full = text
+        super().setText(text)
+        if self._elide:
+            self.updateGeometry(); self.update()
+
+    def sizeHint(self) -> QSize:
+        return QSize(self.fontMetrics().horizontalAdvance(self._full) + 6, super().sizeHint().height()) if self._elide else super().sizeHint()
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(min(60, self.sizeHint().width()), super().minimumSizeHint().height()) if self._elide else super().minimumSizeHint()
+
+    def paintEvent(self, e) -> None:
+        if not self._elide:
+            return super().paintEvent(e)
+        p = QPainter(self)
+        r = self.contentsRect()
+        p.setPen(self.palette().color(QPalette.WindowText))
+        p.drawText(r, int(Qt.AlignVCenter | Qt.AlignLeft), self.fontMetrics().elidedText(self._full.rstrip(), Qt.ElideRight, r.width()))
+        p.end()
 
     def mousePressEvent(self, e) -> None:
         if e.button() == Qt.LeftButton:
@@ -192,8 +225,8 @@ class MainWindow(QMainWindow):
         s = settings()
         self.dock_pages.setVisible(str(s.value("view/thumbs", "true")).lower() == "true")
         self.apply_prefs(relayout=True)
-        if s.value("geometry"):
-            self.restoreGeometry(s.value("geometry"))
+        from . import wayland
+        wayland.restore_main_geometry(self, s.value("geometry"))   # a tasselli decide il compositor; mai oltre lo schermo
         if s.value("windowState2"):
             self.restoreState(s.value("windowState2"))
         self.apply_prefs()
@@ -614,7 +647,8 @@ class MainWindow(QMainWindow):
             self.tool_actions[key] = a
         # --- Proprietà
         propb = self._bar(tr("Proprietà"), "toolProps")
-        propb.addWidget(self.props)
+        for g in self.props.groups:                  # gruppi separati: quelli che non ci stanno vanno nel menu «»»
+            propb.addWidget(g)
         self.bars = [main, pages, tools, propb]
         self._build_insert_menus()
         for tb in self.bars:
@@ -795,7 +829,7 @@ class MainWindow(QMainWindow):
         import math
         from PySide6.QtWidgets import QSlider
         sb = self.statusBar()
-        self.lbl_stats = _ClickLabel("")
+        self.lbl_stats = _ClickLabel("", elide=True)
         self.lbl_stats.setToolTip(tr("Statistiche del documento (clic per i dettagli)"))
         self.lbl_stats.clicked.connect(self.show_stats)
         self.zoom_slider = QSlider(Qt.Horizontal)
@@ -897,6 +931,7 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         self.lbl_stats.setText("  ·  ".join(parts) + "   ")
+        self.lbl_stats.setToolTip("  ·  ".join(parts) + "\n" + tr("Statistiche del documento (clic per i dettagli)"))
 
     def show_stats(self) -> None:
         """Finestra con tutte le statistiche del documento."""
@@ -1490,7 +1525,9 @@ class MainWindow(QMainWindow):
                     e.ignore()
                     return
         s = settings()
-        s.setValue("geometry", self.saveGeometry())
+        from . import wayland
+        if not wayland.tiling_compositor():          # a tasselli la dimensione è del compositor: non si sovrascrive quella salvata
+            s.setValue("geometry", self.saveGeometry())
         if self._dock_was is not None:
             self.dock_pages.setVisible(self._dock_was)          # la pagina Attività non deve cambiare il layout salvato
         s.setValue("windowState2", self.saveState())

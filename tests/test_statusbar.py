@@ -74,6 +74,15 @@ class WindowTests(unittest.TestCase):
     def test_statistiche(self):
         t = self.w.lbl_stats.text()
         self.assertIn("1 parola", t)
+        # l'etichetta deve davvero occupare spazio (con il criterio «Ignored» la barra di stato le dava 0 px)
+        self.assertGreater(self.w.lbl_stats.width(), self.w.lbl_stats.fontMetrics().horizontalAdvance("1 parola"))
+        self.w.resize(420, 700)
+        for _ in range(20):
+            app.processEvents()
+        self.assertGreater(self.w.lbl_stats.width(), 30)                       # stretta: accorciata, non sparita
+        self.w.resize(1200, 800)
+        for _ in range(20):
+            app.processEvents()
         self.assertIn("5 caratteri", t)
         self.assertIn("A4 verticale", t)
         self.assertIn(" B", t)

@@ -259,9 +259,13 @@ def run_gui(path=None) -> int:
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication
     configure_hidpi()
+    from . import wayland
+    wayland.configure_platform()               # Linux: Wayland nativo con ripiego su X11, o X11 se scelto
     from .icons import app_icon
     from .mainwindow import MainWindow
     app = QApplication(sys.argv[:1])
+    _fitter = wayland.DialogFitter(app)
+    app.installEventFilter(_fitter)            # i dialoghi restano entro lo schermo (schermi piccoli, niri, Hyprland…)
     app.setApplicationName("PDFDesk")
     app.setOrganizationName("GuidoCauli")
     app.setApplicationVersion(__version__)
