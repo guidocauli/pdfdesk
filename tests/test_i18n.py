@@ -36,6 +36,11 @@ class I18nTests(unittest.TestCase):
         ignore = {"GuidoCauli", "CreationDate", "Keywords", "ModDate", "Producer", "Subject", "Trapped", "Password:"}
         self.assertEqual(sorted(m for m in miss if m not in ignore), [])
 
+    def test_disclaimer_translated(self):
+        from pdfdesk import legal
+        for t in (legal.DISCLAIMER_SHORT,) + legal.DISCLAIMER_TEXT:
+            self.assertIn(t, EN)
+
 
 if __name__ == "__main__":
     unittest.main()

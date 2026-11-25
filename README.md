@@ -15,6 +15,7 @@ Editor PDF grafico per **Windows, Linux e macOS**. Si distribuisce come singolo 
 - [Funzioni non supportate e limiti](#funzioni-non-supportate-e-limiti)
 - [Compilare dai sorgenti](#compilare-dai-sorgenti)
 - [Licenza](#licenza)
+- [Esclusione di responsabilità](#esclusione-di-responsabilità)
 
 ---
 
@@ -348,5 +349,22 @@ Compilazione per Windows da Linux (Wine), installatore, firma degli eseguibili, 
 ## Licenza
 
 **AGPL-3.0-or-later** (vedi [LICENSE](LICENSE)), perché il programma usa PyMuPDF (AGPL). Componenti principali: Qt/PySide6 (LGPL), pyHanko (MIT), cryptography (Apache/BSD), Ghostscript (AGPL), CTranslate2 (MIT). Elenco completo in [THIRD_PARTY.md](THIRD_PARTY.md).
+
+---
+
+## Esclusione di responsabilità
+
+PDFDesk è software libero distribuito **«così com'è» (AS IS), senza garanzie di alcun tipo**, esplicite o implicite, comprese le garanzie di commerciabilità e di idoneità a uno scopo particolare, nei limiti consentiti dalla legge applicabile.
+
+In nessun caso l'autore o chi distribuisce il programma risponde di danni diretti, indiretti, incidentali o consequenziali derivanti dall'uso o dall'impossibilità di usare il programma, compresi la perdita o l'alterazione di dati e documenti.
+
+Spetta all'utente verificare i risultati prima di farvi affidamento, in particolare:
+
+- che le redazioni abbiano rimosso davvero le informazioni;
+- la validità legale delle firme digitali;
+- la conformità effettiva dei file PDF/A e PDF/X;
+- l'accuratezza del testo prodotto da OCR e traduzione automatica.
+
+Conservare sempre una copia dei documenti originali. Il testo vincolante è quello delle sezioni 15 («Disclaimer of Warranty») e 16 («Limitation of Liability») della [licenza GNU AGPL versione 3](LICENSE).
 
 PDFDesk — Guido Cauli <guido.cauli@gmail.com>

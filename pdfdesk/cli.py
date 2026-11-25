@@ -101,7 +101,9 @@ def main(argv=None) -> int:
         from .selftest import run
         return run()
     if args.version:
+        from .legal import disclaimer_short
         print(VERSION_LINE)
+        print(disclaimer_short())
         return 0
     if args.install_ocr or args.ocr_download:
         # il motore OCR è nel programma: si scaricano solo le lingue (installatore Windows: accanto al programma)

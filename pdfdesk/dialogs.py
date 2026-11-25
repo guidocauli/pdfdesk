@@ -8,7 +8,7 @@ from typing import Optional
 
 from PySide6.QtCore import QEvent, QObject, QPointF, QSettings, QSize, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QImage, QPainter, QPainterPath, QPen, QPixmap
-from PySide6.QtWidgets import (QAbstractItemView, QBoxLayout, QApplication, QCheckBox, QColorDialog, QComboBox, QDialog as _QDialog, QDialogButtonBox,
+from PySide6.QtWidgets import (QAbstractItemView, QTextBrowser, QBoxLayout, QApplication, QCheckBox, QColorDialog, QComboBox, QDialog as _QDialog, QDialogButtonBox,
                                QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QProgressDialog,
                                QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QStackedWidget,
                                QSlider, QSpinBox, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget)
@@ -19,6 +19,7 @@ from . import textbox
 from .core import FONT_NAMES, FONTS
 from .icons import app_icon
 from .i18n import tr
+from .legal import disclaimer_html
 
 
 class QDialog(_QDialog):
@@ -1436,8 +1437,14 @@ class AboutDialog(QDialog):
         lay.addWidget(ic)
         t = QLabel(tr("<h2 align='center'>PDFDesk</h2><p align='center'>{}<br>versione {}</p><p>Visualizza, annota, redigi, firma e comprimi PDF su Windows, Linux e macOS.</p><p>Licenza AGPL-3.0-or-later. Componenti: PyMuPDF (AGPL), Qt/PySide6 (LGPL), pyHanko (MIT).</p>").format(AUTHOR, __version__))
         t.setWordWrap(True); t.setTextFormat(Qt.RichText); t.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        lay.addWidget(t, 1)
+        lay.addWidget(t)
+        box = QGroupBox(tr("Esclusione di responsabilità"))
+        bl = QVBoxLayout(box)
+        d = QTextBrowser(); d.setOpenExternalLinks(True); d.setHtml(disclaimer_html())
+        bl.addWidget(d)
+        lay.addWidget(box, 1)
         bb = QDialogButtonBox(QDialogButtonBox.Ok); bb.accepted.connect(self.accept); lay.addWidget(bb)
+
 
 
 # ---------------------------------------------------------------------- preferenze
